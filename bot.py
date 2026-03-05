@@ -8,15 +8,13 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
 
-# timezone ไทย
 TH_TZ = ZoneInfo("Asia/Bangkok")
 
 TOKEN = os.getenv("TOKEN")
 
 DATA_FILE = "trades.csv"
-
-# เก็บ chat id
 CHAT_ID_FILE = "chat_id.txt"
+
 
 keyboard = [
     ["📊 กำไรวันนี้"],
@@ -28,10 +26,6 @@ reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 pattern = r'(กำไร|ขาดทุน):\s*([+-]?\d+\.?\d*)'
 
-
-# -------------------------
-# เดือนภาษาไทย
-# -------------------------
 
 thai_months = [
     "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
@@ -50,10 +44,6 @@ def thai_date():
     return f"{day} {month} {year}"
 
 
-# -------------------------
-# save chat id
-# -------------------------
-
 def save_chat_id(chat_id):
 
     with open(CHAT_ID_FILE, "w") as f:
@@ -69,10 +59,6 @@ def get_chat_id():
         return None
 
 
-# -------------------------
-# บันทึก trade
-# -------------------------
-
 def save_trade(value):
 
     with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
@@ -81,10 +67,6 @@ def save_trade(value):
 
         writer.writerow([datetime.now(TH_TZ).isoformat(), value])
 
-
-# -------------------------
-# อ่าน trade ตามวันย้อนหลัง
-# -------------------------
 
 def read_trades(days):
 
@@ -112,10 +94,6 @@ def read_trades(days):
 
     return total, count
 
-
-# -------------------------
-# อ่าน trade ตั้งแต่วันอาทิตย์
-# -------------------------
 
 def read_week_trades():
 
@@ -151,10 +129,6 @@ def read_week_trades():
     return total, count
 
 
-# -------------------------
-# /menu
-# -------------------------
-
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
@@ -165,10 +139,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-
-# -------------------------
-# handle message
-# -------------------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -214,10 +184,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📈 รายงาน 30 วัน\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
         )
 
-
-# -------------------------
-# รายงานอัตโนมัติ
-# -------------------------
 
 async def daily_report(context: ContextTypes.DEFAULT_TYPE):
 
@@ -267,14 +233,10 @@ async def send_thai_date(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=chat_id, text=message)
 
 
-# -------------------------
-# main
-# -------------------------
-
 def main():
 
     if TOKEN is None:
-        print("ERROR: TOKEN not found")
+        print("TOKEN not found")
         return
 
     app = ApplicationBuilder().token(TOKEN).build()
@@ -286,20 +248,17 @@ def main():
 
     job_queue.run_daily(
         send_thai_date,
-        time=datetime.strptime("00:01", "%H:%M").time(),
-        timezone=TH_TZ
+        time=datetime.strptime("00:01", "%H:%M").time()
     )
 
     job_queue.run_daily(
         daily_report,
-        time=datetime.strptime("23:59", "%H:%M").time(),
-        timezone=TH_TZ
+        time=datetime.strptime("23:59", "%H:%M").time()
     )
 
     job_queue.run_daily(
         weekly_report,
-        time=datetime.strptime("23:59", "%H:%M").time(),
-        timezone=TH_TZ
+        time=datetime.strptime("23:59", "%H:%M").time()
     )
 
     print("Profit Tracker Bot Running...")
