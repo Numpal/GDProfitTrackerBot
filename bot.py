@@ -2,41 +2,69 @@ import re
 import csv
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
 
-# ดึง TOKEN จาก Railway Variables
-TOKEN = os.getenv("TOKEN")
+# timezone ไทย
+TH_TZ = ZoneInfo("Asia/Bangkok")
 
-# ไฟล์เก็บข้อมูล
+TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+
 DATA_FILE = "trades.csv"
 
-# ปุ่มเมนู
 keyboard = [
     ["📊 กำไรวันนี้"],
-    ["📅 กำไร 7 วัน"],
+    ["📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน"]
 ]
 
 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# regex อ่านกำไร / ขาดทุน
 pattern = r'(กำไร|ขาดทุน):\s*([+-]?\d+\.?\d*)'
 
 
+# -------------------------
+# เดือนภาษาไทย
+# -------------------------
+
+thai_months = [
+    "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
+    "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"
+]
+
+
+def thai_date():
+
+    now = datetime.now(TH_TZ)
+
+    day = now.day
+    month = thai_months[now.month - 1]
+    year = now.year + 543
+
+    return f"{day} {month} {year}"
+
+
+# -------------------------
 # บันทึก trade
+# -------------------------
+
 def save_trade(value):
 
     with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
 
         writer = csv.writer(f)
 
-        writer.writerow([datetime.now().isoformat(), value])
+        writer.writerow([datetime.now(TH_TZ).isoformat(), value])
 
 
-# อ่าน trade ตามจำนวนวัน
+# -------------------------
+# อ่าน trade ตามวันย้อนหลัง
+# -------------------------
+
 def read_trades(days):
 
     total = 0
@@ -53,31 +81,72 @@ def read_trades(days):
                 date = datetime.fromisoformat(row[0])
                 value = float(row[1])
 
-                if datetime.now() - date <= timedelta(days=days):
+                if datetime.now(TH_TZ) - date <= timedelta(days=days):
 
                     total += value
                     count += 1
 
     except FileNotFoundError:
-
         pass
 
     return total, count
 
 
-# /start command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# -------------------------
+# อ่าน trade ตั้งแต่วันอาทิตย์
+# -------------------------
+
+def read_week_trades():
+
+    total = 0
+    count = 0
+
+    now = datetime.now(TH_TZ)
+
+    # หาอาทิตย์ล่าสุด
+    days_since_sunday = (now.weekday() + 1) % 7
+    sunday = now - timedelta(days=days_since_sunday)
+
+    sunday_start = sunday.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    try:
+
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+
+            reader = csv.reader(f)
+
+            for row in reader:
+
+                date = datetime.fromisoformat(row[0])
+                value = float(row[1])
+
+                if date >= sunday_start:
+
+                    total += value
+                    count += 1
+
+    except FileNotFoundError:
+        pass
+
+    return total, count
+
+
+# -------------------------
+# /menu
+# -------------------------
+
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
-
         "📊 Copy Trade Profit Tracker\n\nเลือกเมนูเพื่อดูรายงาน",
-
         reply_markup=reply_markup
-
     )
 
 
-# อ่านข้อความทั้งหมด
+# -------------------------
+# handle message
+# -------------------------
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
@@ -88,8 +157,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         return
 
-
-    # ตรวจจับกำไร / ขาดทุน
     match = re.search(pattern, text)
 
     if match:
@@ -100,57 +167,109 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         print("Trade saved:", value)
 
-
-    # รายงานวันนี้
     if text == "📊 กำไรวันนี้":
 
         total, count = read_trades(1)
 
         await update.message.reply_text(
-
             f"📊 รายงานวันนี้\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
-
         )
 
+    elif text == "📅 กำไรสัปดาห์นี้":
 
-    # รายงาน 7 วัน
-    elif text == "📅 กำไร 7 วัน":
-
-        total, count = read_trades(7)
+        total, count = read_week_trades()
 
         await update.message.reply_text(
-
-            f"📅 รายงาน 7 วัน\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
-
+            f"📅 สรุปกำไรสัปดาห์นี้\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
         )
 
-
-    # รายงาน 30 วัน
     elif text == "📈 กำไร 30 วัน":
 
         total, count = read_trades(30)
 
         await update.message.reply_text(
-
             f"📈 รายงาน 30 วัน\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
-
         )
 
 
-# เริ่ม bot
+# -------------------------
+# รายงานอัตโนมัติ
+# -------------------------
+
+async def daily_report(context: ContextTypes.DEFAULT_TYPE):
+
+    total, count = read_trades(1)
+
+    message = (
+        "📊 สรุปกำไรประจำวัน\n\n"
+        f"จำนวนไม้: {count}\n"
+        f"กำไรสุทธิ: {round(total,2)} USC"
+    )
+
+    await context.bot.send_message(chat_id=CHAT_ID, text=message)
+
+
+async def weekly_report(context: ContextTypes.DEFAULT_TYPE):
+
+    total, count = read_week_trades()
+
+    message = (
+        "📅 สรุปกำไรสัปดาห์นี้\n\n"
+        f"จำนวนไม้: {count}\n"
+        f"กำไรสุทธิ: {round(total,2)} USC"
+    )
+
+    await context.bot.send_message(chat_id=CHAT_ID, text=message)
+
+
+async def send_thai_date(context: ContextTypes.DEFAULT_TYPE):
+
+    message = f"📅 วันนี้คือ\n{thai_date()}"
+
+    await context.bot.send_message(chat_id=CHAT_ID, text=message)
+
+
+# -------------------------
+# main
+# -------------------------
+
 def main():
 
     if TOKEN is None:
-        print("ERROR: TOKEN not found in environment variables")
+        print("ERROR: TOKEN not found")
         return
 
+    if CHAT_ID is None:
+        print("ERROR: CHAT_ID not found")
+        return
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-
+    app.add_handler(CommandHandler("menu", menu))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    job_queue = app.job_queue
+
+    # วันที่ 00:01
+    job_queue.run_daily(
+        send_thai_date,
+        time=datetime.strptime("00:01", "%H:%M").time(),
+        timezone=TH_TZ
+    )
+
+    # รายวัน 23:59
+    job_queue.run_daily(
+        daily_report,
+        time=datetime.strptime("23:59", "%H:%M").time(),
+        timezone=TH_TZ
+    )
+
+    # สัปดาห์นี้ 23:59
+    job_queue.run_daily(
+        weekly_report,
+        time=datetime.strptime("23:59", "%H:%M").time(),
+        timezone=TH_TZ
+    )
 
     print("Profit Tracker Bot Running...")
 
