@@ -140,9 +140,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     member = await context.bot.get_chat_member(chat_id, user_id)
 
+    # ถ้าไม่ใช่ Admin บอทจะเงียบ
     if member.status not in ["administrator", "creator"]:
-
-        await update.message.reply_text("❌ คำสั่งนี้ใช้ได้เฉพาะ Admin เท่านั้น")
         return
 
     save_chat_id(chat_id)
