@@ -129,9 +129,22 @@ def read_week_trades():
     return total, count
 
 
+# -----------------------
+# Admin Only Menu
+# -----------------------
+
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+
+    member = await context.bot.get_chat_member(chat_id, user_id)
+
+    if member.status not in ["administrator", "creator"]:
+
+        await update.message.reply_text("❌ คำสั่งนี้ใช้ได้เฉพาะ Admin เท่านั้น")
+        return
+
     save_chat_id(chat_id)
 
     await update.message.reply_text(
@@ -139,6 +152,10 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+
+# -----------------------
+# Handle Message
+# -----------------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -184,6 +201,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📈 รายงาน 30 วัน\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
         )
 
+
+# -----------------------
+# Auto Reports
+# -----------------------
 
 async def daily_report(context: ContextTypes.DEFAULT_TYPE):
 
@@ -232,6 +253,10 @@ async def send_thai_date(context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_message(chat_id=chat_id, text=message)
 
+
+# -----------------------
+# Main
+# -----------------------
 
 def main():
 
