@@ -264,8 +264,8 @@ async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 15))
-        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
+        asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 300))
+        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 300))
     except Exception as e:
         print("Check time error:", e)
 
