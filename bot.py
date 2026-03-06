@@ -67,8 +67,11 @@ def get_chat_id():
 
 def get_last_msg_id():
 
-    with open(LAST_MSG_FILE) as f:
-        return int(f.read())
+    try:
+        with open(LAST_MSG_FILE) as f:
+            return int(f.read())
+    except:
+        return 0
 
 def save_last_msg_id(msg_id):
 
@@ -271,10 +274,9 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
     if trade:
 
         save_trade(trade,msg_id)
-        print("Trade Saved:",trade)
+        print(f"Trade Saved: {trade}")
 
     save_last_msg_id(msg_id)
-
 
     if text=="📊 กำไรวันนี้":
 
@@ -284,7 +286,6 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
             f"📊 วันนี้\n\nไม้:{count}\n\nกำไร:{round(total,2)} USD"
         )
 
-
     elif text=="📅 กำไรสัปดาห์นี้":
 
         total,count=read_week_trades()
@@ -292,7 +293,6 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📅 สัปดาห์นี้ (สะสม)\n\nไม้:{count}\n\nกำไร:{round(total,2)} USD"
         )
-
 
     elif text=="📈 กำไร 30 วัน":
 
@@ -368,7 +368,7 @@ def main():
 
     print("Copy Trade Tracker Running...")
 
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling()
 
 if __name__=="__main__":
     main()
