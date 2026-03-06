@@ -74,6 +74,7 @@ keyboard = [
     ["📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน"]
 ]
+# ปรับเป็น persistent=True เพื่อให้ปุ่มอยู่ถาวรแม้จะกดส่งข้อความไปแล้ว
 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 thai_months = [
@@ -233,19 +234,21 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_chat_id(chat_id)
 
-        # 1. ส่งจุดเพื่อกระตุ้นให้คีย์บอร์ดเด้งขึ้นมา (โดยไม่มีข้อความแจ้งเตือนยาวๆ)
+        # ส่งข้อความสั้นๆ เพื่อให้คีย์บอร์ดปรากฏ และค้างไว้สักครู่
         temp_msg = await context.bot.send_message(
             chat_id=chat_id,
-            text=".",
+            text="📱 เรียกใช้งานเมนูรายงานผล...",
             reply_markup=reply_markup
         )
         
-        # 2. ลบคำสั่ง /menu และจุด (.) ทิ้งทันทีเพื่อให้แชทสะอาด
+        # ลบคำสั่ง /menu ของผู้ใช้ทันที
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            await context.bot.delete_message(chat_id=chat_id, message_id=temp_msg.message_id)
         except:
             pass
+            
+        # ลบข้อความ "เรียกใช้งานเมนู..." หลังจากผ่านไป 5 วินาที (เพื่อให้ปุ่มไม่หาย)
+        asyncio.create_task(delete_message_safe(context, chat_id, temp_msg.message_id, 5))
         
     except Exception as e:
         print("Menu error:", e)
@@ -264,7 +267,7 @@ async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        # ปรับเวลาลบเป็น 300 วินาที ตามที่คุณต้องการ
+        # ปรับเวลาลบเป็น 300 วินาที ตามที่ต้องการ
         asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 300))
         asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 300))
     except Exception as e:
@@ -288,7 +291,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"]:
-            # ลบข้อความที่ User กดปุ่มทันที
+            # ลบข้อความที่ User กดปุ่มทันทีเพื่อความสะอาด
             try: await update.message.delete()
             except: pass
 
@@ -302,7 +305,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 total, count = read_trades(30)
                 report_text = f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD"
             
-            # ส่งรายงานกำไรและตั้งเวลาลบ 15 วินาที
+            # ส่งรายงานและตั้งเวลาลบ 15 วินาที
             msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
