@@ -10,9 +10,8 @@ from zoneinfo import ZoneInfo
 
 import gspread
 from google.oauth2.service_account import Credentials
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
-from telegram.error import TelegramError
 
 # 1. สร้าง Web Server เล็กๆ สำหรับ Health Check
 def run_health_check_server():
@@ -82,17 +81,14 @@ except Exception as e:
     print(f"❌ Error during Google Sheets setup: {e}")
 
 # -------------------------
-# Menu Keyboards
+# Menu Keyboards (เอาปุ่มซ่อนออกถาวร)
 # -------------------------
 main_keyboard = [
     ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน", "💵 แปลงค่าเงิน"],
-    ["🔗 ประวัติย้อนหลังทั้งหมด"] # เอาปุ่มซ่อนเมนูออกแล้ว
+    ["🔗 ประวัติย้อนหลังทั้งหมด"]
 ]
 main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True, one_time_keyboard=False)
-
-mini_keyboard = [["📱 เปิดเมนู"]]
-mini_markup = ReplyKeyboardMarkup(mini_keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 sheet_inline_keyboard = InlineKeyboardMarkup([
     [InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]
@@ -254,17 +250,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 processed_ids.add(str(msg_id))
             return
 
-        # 2. ตรวจสอบการกดปุ่มเมนู (ลบปุ่มซ่อนเมนูออกแล้ว)
-        menu_buttons = ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด", "💵 แปลงค่าเงิน", "📱 เปิดเมนู"]
+        # 2. ตรวจสอบการกดปุ่มเมนู
+        menu_buttons = ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด", "💵 แปลงค่าเงิน"]
         
         if text in menu_buttons:
             try: await update.message.delete()
             except: pass
-
-            if text == "📱 เปิดเมนู":
-                msg = await context.bot.send_message(chat_id=chat_id, text="📱 เปิดใช้งานเมนูรายงานผล", reply_markup=main_markup)
-                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
-                return
 
             if text == "💵 แปลงค่าเงิน":
                 msg = await context.bot.send_message(chat_id=chat_id, text="💡 พิมพ์ `/tobath [ตัวเลข]` เพื่อแปลงเงินครับ\nตัวอย่าง: `/tobath 100`", parse_mode="Markdown")
@@ -291,7 +282,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e: print("Handle error:", e)
 
 # -------------------------
-# Auto Reports (ลบการส่งเมนูค้างไว้เพื่อให้หน้าจอสะอาด)
+# Auto Reports
 # -------------------------
 async def daily_report_job(context):
     chat_id = get_chat_id()
@@ -325,7 +316,7 @@ def main():
     job_queue.run_daily(daily_report_job, time=time(23, 59, tzinfo=TH_TZ))
     job_queue.run_daily(weekly_report_job, time=time(23, 59, tzinfo=TH_TZ))
 
-    print("🚀 Copy Trade Tracker Started (Everyone Access & Toggle Menu)...")
+    print("🚀 Copy Trade Tracker Started (Static Menu Mode)...")
     app.run_polling()
 
 if __name__ == "__main__":
