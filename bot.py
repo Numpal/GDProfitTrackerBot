@@ -34,18 +34,19 @@ if not GOOGLE_PRIVATE_KEY or not GOOGLE_CLIENT_EMAIL:
 # Railway จะ escape newline เป็น \n
 private_key = GOOGLE_PRIVATE_KEY.replace("\\n", "\n")
 
+import os
+
 creds_dict = {
-"type": "service_account",
-"project_id": "copy-trade-bot",
-"private_key": os.getenv("GOOGLE_PRIVATE_KEY").replace("\\n","\n")
-"private_key_id": "dummy",
-"private_key": private_key,
-"client_email": GOOGLE_CLIENT_EMAIL,
-"client_id": "dummy",
-"auth_uri": "https://accounts.google.com/o/oauth2/auth",
-"token_uri": "https://oauth2.googleapis.com/token",
-"auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-"client_x509_cert_url": ""
+    "type": "service_account",
+    "project_id": "copy-trade-bot",
+    "private_key_id": "dummy",
+    "private_key": os.getenv("GOOGLE_PRIVATE_KEY").replace("\\n", "\n"),
+    "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
+    "client_id": "dummy",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": ""
 }
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
