@@ -343,7 +343,7 @@ def main():
 
     job_queue = app.job_queue
     # เพิ่ม Job ใหม่: แจ้งวันเดือนปี ทุกเวลา 02:47
-    job_queue.run_daily(morning_date_job, time=time(2, 47, tzinfo=TH_TZ))
+    job_queue.run_daily(morning_date_job, time=time(0, 1, tzinfo=TH_TZ))
     
     # Jobs เดิม
     job_queue.run_daily(daily_report_job, time=time(23, 59, tzinfo=TH_TZ))
