@@ -1,3 +1,22 @@
+import http.server
+import socketserver
+import threading
+import os
+
+# 1. สร้าง Web Server เล็กๆ รันแยกเป็น Thread เพื่อตอบรับ Koyeb
+def run_health_check_server():
+    port = int(os.getenv("PORT", 8000)) # ใช้ Port 8000 ตามที่ตั้งไว้
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", port), handler) as httpd:
+        print(f"Health check server started on port {port}")
+        httpd.serve_forever()
+
+# 2. เริ่มทำงาน Web Server ในเบื้องหลัง
+threading.Thread(target=run_health_check_server, daemon=True).start()
+
+# --- โค้ดบอทเดิมของคุณเริ่มต้นที่นี่ ---
+# เช่น bot.run() หรือ executor.start_polling()
+
 import re
 import os
 from datetime import datetime, timedelta, time
