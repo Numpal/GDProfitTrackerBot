@@ -19,23 +19,38 @@ TOKEN = os.getenv("TOKEN")
 # -------------------------
 
 SHEET_NAME = "CopyTradeTracker"
-CREDS_B64 = os.getenv("GOOGLE_CREDS_B64")
+
+GOOGLE_PRIVATE_KEY = os.getenv("GOOGLE_PRIVATE_KEY")
+GOOGLE_CLIENT_EMAIL = os.getenv("GOOGLE_CLIENT_EMAIL")
 
 scope = [
 "https://spreadsheets.google.com/feeds",
 "https://www.googleapis.com/auth/drive"
 ]
 
-if CREDS_B64 is None:
-    raise Exception("GOOGLE_CREDS_B64 not found in environment")
+if not GOOGLE_PRIVATE_KEY or not GOOGLE_CLIENT_EMAIL:
+    raise Exception("Google credentials not found")
 
-# decode base64 → json
-creds_json = base64.b64decode(CREDS_B64).decode("utf-8")
-creds_dict = json.loads(creds_json)
+# Railway จะ escape newline เป็น \n
+private_key = GOOGLE_PRIVATE_KEY.replace("\\n", "\n")
+
+creds_dict = {
+"type": "service_account",
+"project_id": "copy-trade-bot",
+"private_key_id": "dummy",
+"private_key": private_key,
+"client_email": GOOGLE_CLIENT_EMAIL,
+"client_id": "dummy",
+"auth_uri": "https://accounts.google.com/o/oauth2/auth",
+"token_uri": "https://oauth2.googleapis.com/token",
+"auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+"client_x509_cert_url": ""
+}
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
+
 spreadsheet = client.open(SHEET_NAME)
 
 trade_sheet = spreadsheet.worksheet("trades")
