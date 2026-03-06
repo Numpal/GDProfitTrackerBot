@@ -233,14 +233,14 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_chat_id(chat_id)
 
-        # เทคนิคส่งข้อความว่าง (จุด) เพื่อเปิดคีย์บอร์ดแล้วลบทิ้งทันทีเพื่อให้ดูเหมือนไม่มีข้อความส่งมา
+        # 1. ส่งจุดเพื่อกระตุ้นให้คีย์บอร์ดเด้งขึ้นมา (โดยไม่มีข้อความแจ้งเตือนยาวๆ)
         temp_msg = await context.bot.send_message(
             chat_id=chat_id,
             text=".",
             reply_markup=reply_markup
         )
         
-        # ลบคำสั่ง /menu ของผู้ใช้ และข้อความจุดของบอททันที
+        # 2. ลบคำสั่ง /menu และจุด (.) ทิ้งทันทีเพื่อให้แชทสะอาด
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
             await context.bot.delete_message(chat_id=chat_id, message_id=temp_msg.message_id)
@@ -264,8 +264,9 @@ async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 300))
-        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 300))
+        # ปรับเวลาลบเป็น 15 วินาที ตามที่คุณต้องการ
+        asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 15))
+        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
     except Exception as e:
         print("Check time error:", e)
 
@@ -287,6 +288,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"]:
+            # ลบข้อความที่ User กดปุ่มทันที
             try: await update.message.delete()
             except: pass
 
@@ -300,6 +302,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 total, count = read_trades(30)
                 report_text = f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD"
             
+            # ส่งรายงานกำไรและตั้งเวลาลบ 15 วินาที
             msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
