@@ -8,7 +8,7 @@ import asyncio
 import gspread
 from google.oauth2.service_account import Credentials
 
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 from telegram.error import TelegramError
 
@@ -22,6 +22,7 @@ SHEET_NAME = "CopyTradeTracker"
 g_email = os.getenv("G_EMAIL")
 g_private_key = os.getenv("G_PRIVATE_KEY")
 g_project_id = os.getenv("G_PROJECT_ID")
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1dQXfk5wXwC1rnUPYB-SEAG3ySi3ZqNsTT6mRPb-BLfo/edit?usp=sharing"
 
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -70,12 +71,15 @@ processed_ids = set()
 # Menu Keyboard (Persistent)
 # -------------------------
 keyboard = [
-    ["📊 กำไรวันนี้"],
-    ["📅 กำไรสัปดาห์นี้"],
-    ["📈 กำไร 30 วัน"]
+    ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้"],
+    ["📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด"]
 ]
-# ปรับเป็น persistent=True เพื่อให้ปุ่มอยู่ถาวรแม้จะกดส่งข้อความไปแล้ว
 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+
+# Inline Keyboard สำหรับลิงก์ไปยัง Sheet
+sheet_inline_keyboard = InlineKeyboardMarkup([
+    [InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]
+])
 
 thai_months = [
     "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
@@ -234,21 +238,19 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_chat_id(chat_id)
 
-        # ส่งข้อความสั้นๆ เพื่อให้คีย์บอร์ดปรากฏ และค้างไว้สักครู่
         temp_msg = await context.bot.send_message(
             chat_id=chat_id,
-            text="📱 เรียกใช้งานเมนูรายงานผล...",
+            text="📱 เรียกใช้งานเมนูรายงานผล (คีย์บอร์ดพร้อมใช้งาน)",
             reply_markup=reply_markup
         )
         
-        # ลบคำสั่ง /menu ของผู้ใช้ทันที
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
         except:
             pass
             
-        # ลบข้อความ "เรียกใช้งานเมนู..." หลังจากผ่านไป 30 วินาที (เพื่อให้ปุ่มไม่หาย)
-        asyncio.create_task(delete_message_safe(context, chat_id, temp_msg.message_id, 30))
+        # ลบข้อความเรียกเมนูหลังจาก 60 วินาที
+        asyncio.create_task(delete_message_safe(context, chat_id, temp_msg.message_id, 60))
         
     except Exception as e:
         print("Menu error:", e)
@@ -267,7 +269,6 @@ async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        # ปรับเวลาลบเป็น 300 วินาที ตามที่ต้องการ
         asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 300))
         asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 300))
     except Exception as e:
@@ -290,24 +291,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_trade(trade, msg_id)
             return
 
-        if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"]:
-            # ลบข้อความที่ User กดปุ่มทันทีเพื่อความสะอาด
-            try: await update.message.delete()
+        if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด"]:
+            # ลบข้อความที่ User กดปุ่มทันทีเพื่อความสะอาด (ยกเว้นปุ่มลิงก์)
+            try: 
+                if text != "🔗 ประวัติย้อนหลังทั้งหมด":
+                    await update.message.delete()
+                else:
+                    # ถ้ากดปุ่มลิงก์ ให้ลบข้อความปุ่มเพื่อไม่ให้รก
+                    await update.message.delete()
             except: pass
 
             if text == "📊 กำไรวันนี้":
                 total, count = read_trades(1)
                 report_text = f"📊 วันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD"
+                msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 30))
+
             elif text == "📅 กำไรสัปดาห์นี้":
                 total, count = read_week_trades()
                 report_text = f"📅 สัปดาห์นี้ (สะสม)\nไม้: {count}\nกำไร: {round(total, 2)} USD"
+                msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 30))
+
             elif text == "📈 กำไร 30 วัน":
                 total, count = read_trades(30)
                 report_text = f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD"
-            
-            # ส่งรายงานและตั้งเวลาลบ 15 วินาที
-            msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
-            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
+                msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 30))
+
+            elif text == "🔗 ประวัติย้อนหลังทั้งหมด":
+                msg = await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="📑 คลิกปุ่มด้านล่างเพื่อเปิดดูประวัติการเทรดใน Google Sheets:",
+                    reply_markup=sheet_inline_keyboard
+                )
+                # ลบข้อความปุ่มลิงก์หลังจาก 60 วินาที
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 60))
 
     except Exception as e:
         print("Message error:", e)
