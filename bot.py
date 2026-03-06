@@ -247,8 +247,8 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
             
-        # ลบข้อความ "เรียกใช้งานเมนู..." หลังจากผ่านไป 5 วินาที (เพื่อให้ปุ่มไม่หาย)
-        asyncio.create_task(delete_message_safe(context, chat_id, temp_msg.message_id, 5))
+        # ลบข้อความ "เรียกใช้งานเมนู..." หลังจากผ่านไป 30 วินาที (เพื่อให้ปุ่มไม่หาย)
+        asyncio.create_task(delete_message_safe(context, chat_id, temp_msg.message_id, 30))
         
     except Exception as e:
         print("Menu error:", e)
