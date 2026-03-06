@@ -14,12 +14,11 @@ TH_TZ = ZoneInfo("Asia/Bangkok")
 TOKEN = os.getenv("TOKEN")
 
 # -------------------------
-# Google Sheet Setup (Hard-fix for Railway)
+# Google Sheet Setup (The Ultimate Fix)
 # -------------------------
 
 SHEET_NAME = "CopyTradeTracker"
 
-# ดึงข้อมูลแยกทีละตัวเพื่อความแม่นยำ
 g_email = os.getenv("G_EMAIL")
 g_private_key = os.getenv("G_PRIVATE_KEY")
 g_project_id = os.getenv("G_PROJECT_ID")
@@ -29,21 +28,25 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# สร้างตัวแปรเริ่มต้นให้เป็น None เพื่อเช็คสถานะภายหลัง
 trade_sheet = None
 config_sheet = None
 
 try:
-    if not g_private_key or not g_email:
-        raise Exception("G_PRIVATE_KEY or G_EMAIL is missing in environment variables")
+    if not g_private_key:
+        raise Exception("G_PRIVATE_KEY is missing in Railway Variables")
 
-    # --- Step 3: Hard-fix (ล้างค่าขยะที่อาจติดมาจากการก๊อปปี้วางใน Railway) ---
-    # 1. strip() เพื่อลบช่องว่างหัวท้าย 
-    # 2. replace('"', '') เพื่อลบเครื่องหมายคำพูดที่อาจก๊อปปี้ติดมา
-    # 3. replace("\\n", "\n") เพื่อแปลงตัวอักษร Newline ให้ถูกต้อง
-    formatted_key = g_private_key.strip().replace('"', '').replace("\\n", "\n")
+    # ล้างอักขระพิเศษที่อาจหลุดมาจากการ Copy-Paste
+    # 1. ลบช่องว่างหัวท้าย .strip()
+    # 2. ลบอัญประกาศถ้าเผลอใส่มา .replace('"', '')
+    # 3. แปลงตัวอักษร \n เป็นการขึ้นบรรทัดใหม่จริงๆ .replace('\\n', '\n')
+    formatted_key = g_private_key.strip().replace('"', '').replace("'", "").replace("\\n", "\n")
     
-    # สร้าง Creds จากตัวแปรตรงๆ
+    # บังคับตรวจสอบโครงสร้างพื้นฐาน
+    if "-----BEGIN PRIVATE KEY-----" not in formatted_key:
+        formatted_key = "-----BEGIN PRIVATE KEY-----\n" + formatted_key
+    if "-----END PRIVATE KEY-----" not in formatted_key:
+        formatted_key = formatted_key + "\n-----END PRIVATE KEY-----"
+
     creds_info = {
         "type": "service_account",
         "project_id": g_project_id,
@@ -62,8 +65,7 @@ try:
     print("✅ Successfully connected to Google Sheets")
 except Exception as e:
     print(f"❌ Error during Google Sheets setup: {e}")
-    # หมายเหตุ: หากเชื่อมต่อไม่ได้ trade_sheet จะยังเป็น None ซึ่งจะไป Error ต่อใน load_processed_ids
-
+    
 # -------------------------
 # Cache (FAST MODE)
 # -------------------------
