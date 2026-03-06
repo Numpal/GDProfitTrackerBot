@@ -14,7 +14,7 @@ TH_TZ = ZoneInfo("Asia/Bangkok")
 TOKEN = os.getenv("TOKEN")
 
 # -------------------------
-# Google Sheet Setup
+# Google Sheet Setup (Hard-fix for Railway)
 # -------------------------
 
 SHEET_NAME = "CopyTradeTracker"
@@ -29,22 +29,30 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
+# สร้างตัวแปรเริ่มต้นให้เป็น None เพื่อเช็คสถานะภายหลัง
+trade_sheet = None
+config_sheet = None
+
 try:
     if not g_private_key or not g_email:
-        raise Exception("Missing Google Credentials Variables")
+        raise Exception("G_PRIVATE_KEY or G_EMAIL is missing in environment variables")
 
-    # จัดการเรื่อง \n ใน Private Key ให้สะอาดที่สุด
-    formatted_key = g_private_key.replace("\\n", "\n")
+    # --- Step 3: Hard-fix (ล้างค่าขยะที่อาจติดมาจากการก๊อปปี้วางใน Railway) ---
+    # 1. strip() เพื่อลบช่องว่างหัวท้าย 
+    # 2. replace('"', '') เพื่อลบเครื่องหมายคำพูดที่อาจก๊อปปี้ติดมา
+    # 3. replace("\\n", "\n") เพื่อแปลงตัวอักษร Newline ให้ถูกต้อง
+    formatted_key = g_private_key.strip().replace('"', '').replace("\\n", "\n")
     
     # สร้าง Creds จากตัวแปรตรงๆ
-    creds = Credentials.from_service_account_info({
+    creds_info = {
+        "type": "service_account",
+        "project_id": g_project_id,
         "private_key": formatted_key,
         "client_email": g_email,
-        "project_id": g_project_id,
-        "type": "service_account",
         "token_uri": "https://oauth2.googleapis.com/token",
-    }, scopes=scope)
+    }
 
+    creds = Credentials.from_service_account_info(creds_info, scopes=scope)
     client = gspread.authorize(creds)
     spreadsheet = client.open(SHEET_NAME)
     
@@ -54,7 +62,7 @@ try:
     print("✅ Successfully connected to Google Sheets")
 except Exception as e:
     print(f"❌ Error during Google Sheets setup: {e}")
-    # ไม่ต้อง raise เพื่อให้บอทยังพยายามรันส่วนอื่นได้ (ถ้าต้องการ) แต่ในกรณีนี้แนะนำให้เช็ค Log
+    # หมายเหตุ: หากเชื่อมต่อไม่ได้ trade_sheet จะยังเป็น None ซึ่งจะไป Error ต่อใน load_processed_ids
 
 # -------------------------
 # Cache (FAST MODE)
@@ -85,15 +93,17 @@ thai_months = [
 
 def save_chat_id(cid):
     try:
-        config_sheet.update("A1", [[str(cid)]])
+        if config_sheet:
+            config_sheet.update("A1", [[str(cid)]])
     except Exception as e:
         print(f"Save Chat ID Error: {e}")
 
 def get_chat_id():
     try:
-        value = config_sheet.acell("A1").value
-        if value:
-            return int(value)
+        if config_sheet:
+            value = config_sheet.acell("A1").value
+            if value:
+                return int(value)
         return 0
     except:
         return 0
@@ -111,11 +121,15 @@ def thai_date():
 # -------------------------
 
 def load_processed_ids():
+    global trade_sheet
     try:
-        rows = trade_sheet.col_values(8)
-        for r in rows[1:]:
-            processed_ids.add(str(r))
-        print("Loaded processed ids:", len(processed_ids))
+        if trade_sheet:
+            rows = trade_sheet.col_values(8)
+            for r in rows[1:]:
+                processed_ids.add(str(r))
+            print("Loaded processed ids:", len(processed_ids))
+        else:
+            print("❌ Cannot load IDs: trade_sheet is not defined")
     except Exception as e:
         print("Load processed id error:", e)
 
@@ -128,18 +142,18 @@ def save_trade(trade, msg_id):
         if str(msg_id) in processed_ids:
             return
 
-        trade_sheet.append_row([
-            datetime.now(TH_TZ).isoformat(),
-            trade["symbol"],
-            trade["type"],
-            trade["lot"],
-            trade["open"],
-            trade["close"],
-            trade["profit"],
-            str(msg_id)
-        ])
-
-        processed_ids.add(str(msg_id))
+        if trade_sheet:
+            trade_sheet.append_row([
+                datetime.now(TH_TZ).isoformat(),
+                trade["symbol"],
+                trade["type"],
+                trade["lot"],
+                trade["open"],
+                trade["close"],
+                trade["profit"],
+                str(msg_id)
+            ])
+            processed_ids.add(str(msg_id))
     except Exception as e:
         print("Save trade error:", e)
 
@@ -149,6 +163,7 @@ def save_trade(trade, msg_id):
 
 def read_trades(days):
     try:
+        if not trade_sheet: return 0, 0
         rows = trade_sheet.get_all_values()
         total = 0
         count = 0
@@ -174,6 +189,7 @@ def read_trades(days):
 
 def read_week_trades():
     try:
+        if not trade_sheet: return 0, 0
         rows = trade_sheet.get_all_values()
         now = datetime.now(TH_TZ)
         sunday = now - timedelta(days=(now.weekday()+1)%7)
@@ -316,6 +332,7 @@ def main():
         print("TOKEN not found")
         return
 
+    # เรียกใช้ฟังก์ชันโหลด IDs
     load_processed_ids()
     
     app = ApplicationBuilder().token(TOKEN).build()
