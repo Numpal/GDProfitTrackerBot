@@ -24,24 +24,22 @@ GOOGLE_PRIVATE_KEY = os.getenv("GOOGLE_PRIVATE_KEY")
 GOOGLE_CLIENT_EMAIL = os.getenv("GOOGLE_CLIENT_EMAIL")
 
 scope = [
-"https://spreadsheets.google.com/feeds",
-"https://www.googleapis.com/auth/drive"
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
 ]
 
 if not GOOGLE_PRIVATE_KEY or not GOOGLE_CLIENT_EMAIL:
     raise Exception("Google credentials not found")
 
-# Railway จะ escape newline เป็น \n
-private_key = GOOGLE_PRIVATE_KEY.replace("\\n", "\n")
-
-import os
+# Railway newline fix
+private_key = GOOGLE_PRIVATE_KEY.replace("\\n", "\n").strip()
 
 creds_dict = {
     "type": "service_account",
     "project_id": "copy-trade-bot",
     "private_key_id": "dummy",
-    "private_key": os.getenv("GOOGLE_PRIVATE_KEY").replace("\\n", "\n"),
-    "client_email": os.getenv("GOOGLE_CLIENT_EMAIL"),
+    "private_key": private_key,
+    "client_email": GOOGLE_CLIENT_EMAIL,
     "client_id": "dummy",
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
     "token_uri": "https://oauth2.googleapis.com/token",
