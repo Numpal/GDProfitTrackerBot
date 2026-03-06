@@ -19,35 +19,42 @@ TOKEN = os.getenv("TOKEN")
 
 SHEET_NAME = "CopyTradeTracker"
 
-GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
+# ดึงข้อมูลแยกทีละตัวเพื่อความแม่นยำ
+g_email = os.getenv("G_EMAIL")
+g_private_key = os.getenv("G_PRIVATE_KEY")
+g_project_id = os.getenv("G_PROJECT_ID")
 
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-if not GOOGLE_CREDENTIALS:
-    raise Exception("Google credentials not found")
-
 try:
-    # แก้ไขการโหลด JSON ให้รองรับการหนีอักขระ (Escape Character) บน Railway
-    creds_dict = json.loads(GOOGLE_CREDENTIALS)
-    
-    if "private_key" in creds_dict:
-        # ลบช่องว่างส่วนเกินและจัดการเรื่องตัวอักษรขึ้นบรรทัดใหม่ (\n) ให้ถูกต้อง
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    if not g_private_key or not g_email:
+        raise Exception("Missing Google Credentials Variables")
 
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-    client = gspread.authorize(creds)
+    # จัดการเรื่อง \n ใน Private Key ให้สะอาดที่สุด
+    formatted_key = g_private_key.replace("\\n", "\n")
     
+    # สร้าง Creds จากตัวแปรตรงๆ
+    creds = Credentials.from_service_account_info({
+        "private_key": formatted_key,
+        "client_email": g_email,
+        "project_id": g_project_id,
+        "type": "service_account",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }, scopes=scope)
+
+    client = gspread.authorize(creds)
     spreadsheet = client.open(SHEET_NAME)
+    
     trade_sheet = spreadsheet.worksheet("trades")
     config_sheet = spreadsheet.worksheet("config")
     
-    print("Successfully connected to Google Sheets")
+    print("✅ Successfully connected to Google Sheets")
 except Exception as e:
-    print(f"Error during Google Sheets setup: {e}")
-    raise e
+    print(f"❌ Error during Google Sheets setup: {e}")
+    # ไม่ต้อง raise เพื่อให้บอทยังพยายามรันส่วนอื่นได้ (ถ้าต้องการ) แต่ในกรณีนี้แนะนำให้เช็ค Log
 
 # -------------------------
 # Cache (FAST MODE)
