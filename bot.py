@@ -1,8 +1,11 @@
 import re
-import csv
 import os
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
+import json
+
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
@@ -11,14 +14,26 @@ TH_TZ = ZoneInfo("Asia/Bangkok")
 TOKEN = os.getenv("TOKEN")
 
 # -------------------------
-# Railway Volume Path
+# Google Sheet Setup
 # -------------------------
 
-DATA_DIR = "/data"
+SHEET_NAME = os.getenv("SHEET_NAME")
+CREDS_JSON = os.getenv("GOOGLE_CREDS_JSON")
 
-DATA_FILE = os.path.join(DATA_DIR, "trades.csv")
-CHAT_ID_FILE = os.path.join(DATA_DIR, "chat_id.txt")
-LAST_MSG_FILE = os.path.join(DATA_DIR, "last_message_id.txt")
+scope = [
+"https://spreadsheets.google.com/feeds",
+"https://www.googleapis.com/auth/drive"
+]
+
+creds_dict = json.loads(CREDS_JSON)
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+
+client = gspread.authorize(creds)
+sheet = client.open(SHEET_NAME).sheet1
+
+# -------------------------
+# Menu Keyboard
+# -------------------------
 
 keyboard = [
 ["📊 กำไรวันนี้"],
@@ -33,61 +48,31 @@ thai_months = [
 "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"
 ]
 
-# -------------------------
-# File Safety
-# -------------------------
-
-def ensure_files():
-
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-    if not os.path.exists(DATA_FILE):
-        with open(DATA_FILE,"w",newline="",encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["date","symbol","type","lot","open","close","profit","msg_id"])
-
-    if not os.path.exists(CHAT_ID_FILE):
-        with open(CHAT_ID_FILE,"w") as f:
-            f.write("0")
-
-    if not os.path.exists(LAST_MSG_FILE):
-        with open(LAST_MSG_FILE,"w") as f:
-            f.write("0")
+chat_id_cache = 0
+last_msg_id = 0
 
 # -------------------------
 # Utilities
 # -------------------------
 
 def thai_date():
-
     now = datetime.now(TH_TZ)
     return f"{now.day} {thai_months[now.month-1]} {now.year+543}"
 
-def save_chat_id(chat_id):
-
-    with open(CHAT_ID_FILE,"w") as f:
-        f.write(str(chat_id))
+def save_chat_id(cid):
+    global chat_id_cache
+    chat_id_cache = cid
 
 def get_chat_id():
-
-    try:
-        with open(CHAT_ID_FILE) as f:
-            return int(f.read())
-    except:
-        return 0
+    return chat_id_cache
 
 def get_last_msg_id():
+    global last_msg_id
+    return last_msg_id
 
-    try:
-        with open(LAST_MSG_FILE) as f:
-            return int(f.read())
-    except:
-        return 0
-
-def save_last_msg_id(msg_id):
-
-    with open(LAST_MSG_FILE,"w") as f:
-        f.write(str(msg_id))
+def save_last_msg_id(mid):
+    global last_msg_id
+    last_msg_id = mid
 
 # -------------------------
 # Trade Duplicate Check
@@ -95,17 +80,11 @@ def save_last_msg_id(msg_id):
 
 def trade_exists(msg_id):
 
-    try:
-        with open(DATA_FILE,"r",encoding="utf-8") as f:
+    rows = sheet.get_all_values()
 
-            reader = csv.reader(f)
-
-            for row in reader:
-                if len(row) > 7 and row[7] == str(msg_id):
-                    return True
-
-    except:
-        pass
+    for row in rows:
+        if len(row) > 7 and row[7] == str(msg_id):
+            return True
 
     return False
 
@@ -118,20 +97,16 @@ def save_trade(trade,msg_id):
     if trade_exists(msg_id):
         return
 
-    with open(DATA_FILE,"a",newline="",encoding="utf-8") as f:
-
-        writer = csv.writer(f)
-
-        writer.writerow([
-            datetime.now(TH_TZ).isoformat(),
-            trade["symbol"],
-            trade["type"],
-            trade["lot"],
-            trade["open"],
-            trade["close"],
-            trade["profit"],
-            msg_id
-        ])
+    sheet.append_row([
+        datetime.now(TH_TZ).isoformat(),
+        trade["symbol"],
+        trade["type"],
+        trade["lot"],
+        trade["open"],
+        trade["close"],
+        trade["profit"],
+        msg_id
+    ])
 
 # -------------------------
 # Read Trades
@@ -139,30 +114,27 @@ def save_trade(trade,msg_id):
 
 def read_trades(days):
 
-    total=0
-    count=0
+    rows = sheet.get_all_values()
 
-    try:
+    total = 0
+    count = 0
 
-        with open(DATA_FILE,"r",encoding="utf-8") as f:
+    for row in rows:
 
-            reader=csv.reader(f)
+        if row[0] == "date":
+            continue
 
-            for row in reader:
+        try:
 
-                if row[0]=="date":
-                    continue
+            date = datetime.fromisoformat(row[0])
+            profit = float(row[6])
 
-                date=datetime.fromisoformat(row[0])
-                profit=float(row[6])
+            if datetime.now(TH_TZ) - date <= timedelta(days=days):
+                total += profit
+                count += 1
 
-                if datetime.now(TH_TZ)-date<=timedelta(days=days):
-
-                    total+=profit
-                    count+=1
-
-    except:
-        pass
+        except:
+            pass
 
     return total,count
 
@@ -172,35 +144,32 @@ def read_trades(days):
 
 def read_week_trades():
 
-    now=datetime.now(TH_TZ)
+    rows = sheet.get_all_values()
 
-    sunday=now-timedelta(days=(now.weekday()+1)%7)
-    sunday=sunday.replace(hour=0,minute=0,second=0,microsecond=0)
+    now = datetime.now(TH_TZ)
 
-    total=0
-    count=0
+    sunday = now - timedelta(days=(now.weekday()+1)%7)
+    sunday = sunday.replace(hour=0,minute=0,second=0,microsecond=0)
 
-    try:
+    total = 0
+    count = 0
 
-        with open(DATA_FILE,"r",encoding="utf-8") as f:
+    for row in rows:
 
-            reader=csv.reader(f)
+        if row[0] == "date":
+            continue
 
-            for row in reader:
+        try:
 
-                if row[0]=="date":
-                    continue
+            date = datetime.fromisoformat(row[0])
+            profit = float(row[6])
 
-                date=datetime.fromisoformat(row[0])
-                profit=float(row[6])
+            if date >= sunday:
+                total += profit
+                count += 1
 
-                if date>=sunday:
-
-                    total+=profit
-                    count+=1
-
-    except:
-        pass
+        except:
+            pass
 
     return total,count
 
@@ -371,8 +340,6 @@ async def test_message(context):
 # -------------------------
 
 def main():
-
-    ensure_files()
 
     if TOKEN is None:
         print("TOKEN not found")
