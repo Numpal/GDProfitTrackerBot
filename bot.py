@@ -108,7 +108,8 @@ def thai_date():
     now = datetime.now(TH_TZ)
     return f"{now.day} {thai_months[now.month-1]} {now.year+543}"
 
-async def delete_message_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, delay: int = 3):
+async def delete_message_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, delay: int = 15):
+    """ฟังก์ชันลบข้อความหลังจากผ่านไปกี่วินาที (ค่าเริ่มต้น 15 วิ)"""
     await asyncio.sleep(delay)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -251,15 +252,15 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_chat_id(chat_id)
         
+        # ลบคำสั่ง /menu ของ user เพื่อความสะอาด
         try: await update.message.delete()
         except: pass
 
-        msg = await update.message.reply_text(
-            "📊 Copy Trade Profit Tracker",
+        # ส่งเมนู (ไม่ลบข้อความนี้ เพื่อให้ปุ่มยังคงอยู่)
+        await update.message.reply_text(
+            "📊 เลือกดูรายการกำไรด้านล่างนี้ครับ:",
             reply_markup=reply_markup
         )
-        # ปรับเหลือ 3 วินาที
-        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 3))
         
     except Exception as e:
         print("Menu error:", e)
@@ -273,8 +274,8 @@ async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
     msg = await update.message.reply_text(f"🕒 เวลาบอทปัจจุบัน (ไทย):\nวันที่: {current_date}\nเวลา: {current_time}")
-    # ปรับเหลือ 3 วินาที
-    asyncio.create_task(delete_message_safe(context, update.effective_chat.id, msg.message_id, 3))
+    # ลบข้อความบอกเวลาหลังจาก 15 วิ
+    asyncio.create_task(delete_message_safe(context, update.effective_chat.id, msg.message_id, 15))
 
 # -------------------------
 # Handle Message
@@ -292,31 +293,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if trade:
             save_trade(trade, msg_id)
 
+        # ถ้ากดปุ่มรายงาน
         if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"]:
+            # 1. ลบข้อความที่ user กดปุ่มทันที
             try: await update.message.delete()
             except: pass
 
-        # ปรับรูปแบบรายงานให้กระชับ (ตัดบรรทัดว่าง)
-        if text == "📊 กำไรวันนี้":
-            total, count = read_trades(1)
-            msg = await update.message.reply_text(f"📊 วันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD")
-            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 3))
-
-        elif text == "📅 กำไรสัปดาห์นี้":
-            total, count = read_week_trades()
-            msg = await update.message.reply_text(f"📅 สัปดาห์นี้ (สะสม)\nไม้: {count}\nกำไร: {round(total, 2)} USD")
-            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 3))
-
-        elif text == "📈 กำไร 30 วัน":
-            total, count = read_trades(30)
-            msg = await update.message.reply_text(f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD")
-            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 3))
+            # 2. เตรียมข้อมูลและส่งรายงาน
+            if text == "📊 กำไรวันนี้":
+                total, count = read_trades(1)
+                report_text = f"📊 วันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD"
+            elif text == "📅 กำไรสัปดาห์นี้":
+                total, count = read_week_trades()
+                report_text = f"📅 สัปดาห์นี้ (สะสม)\nไม้: {count}\nกำไร: {round(total, 2)} USD"
+            elif text == "📈 กำไร 30 วัน":
+                total, count = read_trades(30)
+                report_text = f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD"
+            
+            # ส่งรายงาน
+            msg = await update.message.reply_text(report_text)
+            # 3. สั่งลบข้อความรายงานหลังจาก 15 วินาที
+            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
     except Exception as e:
         print("Message error:", e)
 
 # -------------------------
-# Auto Reports
+# Auto Reports (ไม่ลบ)
 # -------------------------
 async def send_thai_date(context):
     chat_id = get_chat_id()
