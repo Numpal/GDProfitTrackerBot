@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 import json
+import asyncio
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -35,10 +36,8 @@ try:
     if not g_private_key:
         raise Exception("G_PRIVATE_KEY is missing in Railway Variables")
 
-    # ล้างอักขระพิเศษที่อาจหลุดมาจากการ Copy-Paste
     formatted_key = g_private_key.strip().replace('"', '').replace("'", "").replace("\\n", "\n")
     
-    # บังคับตรวจสอบโครงสร้างพื้นฐาน
     if "-----BEGIN PRIVATE KEY-----" not in formatted_key:
         formatted_key = "-----BEGIN PRIVATE KEY-----\n" + formatted_key
     if "-----END PRIVATE KEY-----" not in formatted_key:
@@ -93,7 +92,6 @@ thai_months = [
 def save_chat_id(cid):
     try:
         if config_sheet:
-            # แก้ไข DeprecationWarning: ใช้ named arguments (range_name และ values)
             config_sheet.update(range_name="A1", values=[[str(cid)]])
     except Exception as e:
         print(f"Save Chat ID Error: {e}")
@@ -115,6 +113,14 @@ def get_chat_id():
 def thai_date():
     now = datetime.now(TH_TZ)
     return f"{now.day} {thai_months[now.month-1]} {now.year+543}"
+
+# ฟังก์ชันสำหรับสั่งลบข้อความอัตโนมัติ (หัวใจสำคัญที่เพิ่มเข้ามา)
+async def delete_message_after(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, delay: int = 30):
+    await asyncio.sleep(delay)
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        print(f"Delete message error: {e}")
 
 # -------------------------
 # Load Existing Trades
@@ -229,12 +235,10 @@ def process_trade(text):
     if not profit_match:
         return None
 
-    # แปลงกำไร/ขาดทุน
     value = float(profit_match.group(2))
     if profit_match.group(1) == "ขาดทุน":
         value = -abs(value)
 
-    # แก้ไขการคำนวณ Lot: หารด้วย 10,000 (100.00 -> 0.01)
     raw_lot = float(lot_match.group(1)) if lot_match else 0
     calculated_lot = raw_lot / 10000
 
@@ -262,10 +266,13 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         save_chat_id(chat_id)
-        await update.message.reply_text(
+        msg = await update.message.reply_text(
             "📊 Copy Trade Profit Tracker",
             reply_markup=reply_markup
         )
+        # สั่งลบข้อความเมนูหลัง 30 วินาที
+        asyncio.create_task(delete_message_after(context, chat_id, msg.message_id, 30))
+        
     except Exception as e:
         print("Menu error:", e)
 
@@ -273,7 +280,9 @@ async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TH_TZ)
     current_time = now.strftime("%H:%M:%S")
     current_date = thai_date()
-    await update.message.reply_text(f"🕒 เวลาบอทปัจจุบัน (ไทย):\nวันที่: {current_date}\nเวลา: {current_time}")
+    msg = await update.message.reply_text(f"🕒 เวลาบอทปัจจุบัน (ไทย):\nวันที่: {current_date}\nเวลา: {current_time}")
+    # ลบข้อความเช็คเวลาหลัง 30 วินาที
+    asyncio.create_task(delete_message_after(context, update.effective_chat.id, msg.message_id, 30))
 
 # -------------------------
 # Handle Message
@@ -286,29 +295,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         text = update.message.text
         msg_id = update.message.message_id
+        chat_id = update.effective_chat.id
         trade = process_trade(text)
 
         if trade:
             save_trade(trade, msg_id)
             print("Trade Saved:", trade)
 
+        # จัดการลบข้อความตอบกลับกำไรแบบอัตโนมัติ
         if text == "📊 กำไรวันนี้":
             total, count = read_trades(1)
-            await update.message.reply_text(f"📊 วันนี้\n\nไม้: {count}\n\nกำไร: {round(total, 2)} USD")
+            msg = await update.message.reply_text(f"📊 วันนี้\n\nไม้: {count}\n\nกำไร: {round(total, 2)} USD")
+            asyncio.create_task(delete_message_after(context, chat_id, msg.message_id, 30))
 
         elif text == "📅 กำไรสัปดาห์นี้":
             total, count = read_week_trades()
-            await update.message.reply_text(f"📅 สัปดาห์นี้ (สะสม)\n\nไม้: {count}\n\nกำไร: {round(total, 2)} USD")
+            msg = await update.message.reply_text(f"📅 สัปดาห์นี้ (สะสม)\n\nไม้: {count}\n\nกำไร: {round(total, 2)} USD")
+            asyncio.create_task(delete_message_after(context, chat_id, msg.message_id, 30))
 
         elif text == "📈 กำไร 30 วัน":
             total, count = read_trades(30)
-            await update.message.reply_text(f"📈 30 วัน\n\nไม้: {count}\n\nกำไร: {round(total, 2)} USD")
+            msg = await update.message.reply_text(f"📈 30 วัน\n\nไม้: {count}\n\nกำไร: {round(total, 2)} USD")
+            asyncio.create_task(delete_message_after(context, chat_id, msg.message_id, 30))
 
     except Exception as e:
         print("Message error:", e)
 
 # -------------------------
-# Auto Reports
+# Auto Reports (ข้อความเหล่านี้จะไม่ถูกลบ เพราะเป็นรายงานสรุปรายวัน/สัปดาห์)
 # -------------------------
 
 async def send_thai_date(context):
@@ -347,12 +361,10 @@ def main():
     
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Handlers
     app.add_handler(CommandHandler("menu", menu))
     app.add_handler(CommandHandler("checktime", check_time))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Job Queue
     job_queue = app.job_queue
     job_queue.run_daily(send_thai_date, time=time(0, 1, tzinfo=TH_TZ))
     job_queue.run_daily(daily_report, time=time(23, 59, tzinfo=TH_TZ))
