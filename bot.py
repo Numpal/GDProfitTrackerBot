@@ -17,8 +17,20 @@ TOKEN = os.getenv("TOKEN")
 # Google Sheet Setup
 # -------------------------
 
-SHEET_NAME = os.getenv("SHEET_NAME")
-CREDS_JSON = os.getenv("GOOGLE_CREDS_JSON")
+SHEET_NAME = "CopyTradeTracker"
+CREDS_JSON = os.getenv("{
+  "type": "service_account",
+  "project_id": "telegram-trade-bot-489404",
+  "private_key_id": "1ef97ca98723e999c1ca1b7f1cb24bae5b59d4af",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC2nc/la5QkHSKz\nghbQJmixpQOBH0Dsg1/clYD5K5zEfMUuqrMwjvChiu8ncEGfp+iM7pnazWdWgK/k\nGPvu8XuUhsjn71ZB0KnXVAUEuOYDgrAlNUCMA+suHjrqZdacKHgWPZe5GPz0TLSL\nPhgFEqBCm0NMUDIF+cDbKIj8paUiachOJ7kXQMwa8miY673w5q5aakuVk2D24PK1\n14vD4Ppg+b5Swi4AeVUQ/CdPf1R5uaTjBMjrm7t3nEhzDCF6amIrGcYSwg0toY8J\nNfPNfPitbU0LsaBty0LHhb+D2gS1BRAXUjk8NGGMY8XvsMMJgzBzrBFVzxelLixZ\nOIj5HN7JAgMBAAECggEAQqKvO73Xnp3rDamIfYemaDwYXUN0Q1lk327GUyWw3JnS\nscakADIIaEn0HmX97C4u0041YfvVm2D1zbu4ImaHe5j7MnbI+NcVQndsJV76v4ku\nkUUvOmgrpvZs9R8YAn9Z4nOzK12M3/AlaTHNPfyf8e4Jzozs0/VghBf0dIxVB4sH\nypsdQxaxddrPyR6Pp6uvCCPkXuGdu2Uv3dCJ7xP/ZuuZgdsx14HDopmm1O4uSPEO\nL4/kkKTkqqz+lmwi99PlG01kBw7p8/do2YsCIB58zSqxpu8uqyyXN8D7bjDUZghz\nYW+zS7t0qpENlc0tgr7JSXQFTSqKAlf7rVRU42IqqQKBgQDo8wYXQXMsXEUDAvRx\n3cZnHDe+OmiT7oYtUClMHSL8baKSWIAvV5IlvW9hS896Sqcqp78AXu2ua+xu3Z8t\niXUGVa2TeHf70yWhE0onfxQH8oM0eJnvAzSaE5tTZm3VqqvPPkCwgEtdnVLQq1DB\nwmFfGCeORiulHvDn3KrOKEXrIwKBgQDIr8brT/KzSU30ZD+GwdbVlDEXP/97V6tC\nZlcMVeYGDh0f4v+739L2KFoflnwc0kRD4t6g3vbqr+fYWSCMBGky0hPNf+btrMUO\nuq5VVwgXw60ycSCVG8O+jwujVx6xyEofaBj0oBcr0g8CFSLi+8P6KZjHeZO9v/X+\nRNg2hq9zIwKBgEKNzFuwk1tFMWJe4b/2gMzMvxBWV7KMH0Gq+WGJoYlFOYFeT6E2\n/8ZQjRXbNvfVhFUnf+Z3OKjwpKg4IVY9Q3X/3IuZi44jEUkn3bPTFsH+g4XmPvSO\nkeTDXUlCpna5QEUBoDHNNbsVS6faikQRaQhmOkbnvWh7opBb92DXGMLJAoGAEona\nUEZ0Xwd4ggj4rVQeqmAkIMeyrAwvL9UQWX1d4FVRb26ivRIyBLc5jA10rZzm3XaJ\npkayfH9/ZUbmcMi/hwhM+ADGrlH1aiTokc2WW8uhpjU5E00bSfEg3BfiJ/4eisQs\n+fwH5+5hoImfTWSAeA17pYGfmjmvWau2ZWMPtg0CgYEAt7MnsabQHykJ6urdKJ3Q\n+XMWX9SCkZc49a8HcUKAtM8sVzYl1dYS1w8Lj2dblLFYhXewmakcv0GuUgg37sm+\nkWWep24eq5J7r2VGANdAs24Uc7woQ0Hg7ENA7KV5BnGt4/rIr/yalJP1EkdgpPdR\nAII2ulZqnb9m+F2GfKNGehM=\n-----END PRIVATE KEY-----\n",
+  "client_email": "telegram-trackerprofit-bot@telegram-trade-bot-489404.iam.gserviceaccount.com",
+  "client_id": "113151832703232573900",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/telegram-trackerprofit-bot%40telegram-trade-bot-489404.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}")
 
 scope = [
 "https://spreadsheets.google.com/feeds",
@@ -29,7 +41,16 @@ creds_dict = json.loads(CREDS_JSON)
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
-sheet = client.open(SHEET_NAME).sheet1
+spreadsheet = client.open(SHEET_NAME)
+
+trade_sheet = spreadsheet.worksheet("trades")
+config_sheet = spreadsheet.worksheet("config")
+
+# -------------------------
+# Cache (FAST MODE)
+# -------------------------
+
+processed_ids = set()
 
 # -------------------------
 # Menu Keyboard
@@ -48,45 +69,41 @@ thai_months = [
 "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"
 ]
 
-chat_id_cache = 0
-last_msg_id = 0
+# -------------------------
+# System Config
+# -------------------------
+
+def save_chat_id(cid):
+
+    config_sheet.update("A1", [[cid]])
+
+def get_chat_id():
+
+    try:
+        return int(config_sheet.acell("A1").value)
+    except:
+        return 0
 
 # -------------------------
 # Utilities
 # -------------------------
 
 def thai_date():
+
     now = datetime.now(TH_TZ)
+
     return f"{now.day} {thai_months[now.month-1]} {now.year+543}"
 
-def save_chat_id(cid):
-    global chat_id_cache
-    chat_id_cache = cid
-
-def get_chat_id():
-    return chat_id_cache
-
-def get_last_msg_id():
-    global last_msg_id
-    return last_msg_id
-
-def save_last_msg_id(mid):
-    global last_msg_id
-    last_msg_id = mid
-
 # -------------------------
-# Trade Duplicate Check
+# Load Existing Trades
 # -------------------------
 
-def trade_exists(msg_id):
+def load_processed_ids():
 
-    rows = sheet.get_all_values()
+    rows = trade_sheet.col_values(8)
 
-    for row in rows:
-        if len(row) > 7 and row[7] == str(msg_id):
-            return True
-
-    return False
+    for r in rows[1:]:
+        processed_ids.add(r)
 
 # -------------------------
 # Save Trade
@@ -94,10 +111,10 @@ def trade_exists(msg_id):
 
 def save_trade(trade,msg_id):
 
-    if trade_exists(msg_id):
+    if str(msg_id) in processed_ids:
         return
 
-    sheet.append_row([
+    trade_sheet.append_row([
         datetime.now(TH_TZ).isoformat(),
         trade["symbol"],
         trade["type"],
@@ -108,21 +125,20 @@ def save_trade(trade,msg_id):
         msg_id
     ])
 
+    processed_ids.add(str(msg_id))
+
 # -------------------------
 # Read Trades
 # -------------------------
 
 def read_trades(days):
 
-    rows = sheet.get_all_values()
+    rows = trade_sheet.get_all_values()
 
     total = 0
     count = 0
 
-    for row in rows:
-
-        if row[0] == "date":
-            continue
+    for row in rows[1:]:
 
         try:
 
@@ -144,7 +160,7 @@ def read_trades(days):
 
 def read_week_trades():
 
-    rows = sheet.get_all_values()
+    rows = trade_sheet.get_all_values()
 
     now = datetime.now(TH_TZ)
 
@@ -154,10 +170,7 @@ def read_week_trades():
     total = 0
     count = 0
 
-    for row in rows:
-
-        if row[0] == "date":
-            continue
+    for row in rows[1:]:
 
         try:
 
@@ -244,19 +257,12 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
     text=update.message.text
     msg_id=update.message.message_id
 
-    last_id=get_last_msg_id()
-
-    if msg_id<=last_id:
-        return
-
     trade=process_trade(text)
 
     if trade:
 
         save_trade(trade,msg_id)
         print(f"Trade Saved: {trade}")
-
-    save_last_msg_id(msg_id)
 
     if text=="📊 กำไรวันนี้":
 
@@ -323,18 +329,6 @@ async def weekly_report(context):
         text=f"📅 กำไรสะสมสัปดาห์นี้\nไม้:{count}\nกำไรสะสม:{round(total,2)} USD"
     )
 
-async def test_message(context):
-
-    chat_id=get_chat_id()
-
-    if chat_id==0:
-        return
-
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="เทสระบบ ส่งข้อความอัตโนมัติ"
-    )
-
 # -------------------------
 # Main
 # -------------------------
@@ -344,6 +338,8 @@ def main():
     if TOKEN is None:
         print("TOKEN not found")
         return
+
+    load_processed_ids()
 
     app=ApplicationBuilder().token(TOKEN).build()
 
@@ -355,14 +351,6 @@ def main():
     job_queue.run_daily(send_thai_date,time=time(0,1,tzinfo=TH_TZ))
     job_queue.run_daily(daily_report,time=time(23,59,tzinfo=TH_TZ))
     job_queue.run_daily(weekly_report,time=time(23,59,tzinfo=TH_TZ))
-
-    now=datetime.now(TH_TZ)
-    target=datetime(now.year,now.month,now.day,11,5,tzinfo=TH_TZ)
-
-    delay=(target-now).total_seconds()
-
-    if delay>0:
-        job_queue.run_once(test_message,delay)
 
     print("Copy Trade Tracker Running...")
 
