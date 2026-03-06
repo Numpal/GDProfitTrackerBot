@@ -14,6 +14,7 @@ TOKEN = os.getenv("TOKEN")
 
 DATA_FILE = "trades.csv"
 CHAT_ID_FILE = "chat_id.txt"
+LAST_MSG_FILE = "last_message_id.txt"
 
 
 keyboard = [
@@ -24,7 +25,8 @@ keyboard = [
 
 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-pattern = r'(กำไร|ขาดทุน):\s*([+-]?\d+\.?\d*)'
+
+pattern = r'(กำไร|ขาดทุน):\s*([+-]?\d+\.?\d*)\s*USD'
 
 
 thai_months = [
@@ -57,6 +59,21 @@ def get_chat_id():
             return int(f.read().strip())
     except:
         return None
+
+
+def get_last_msg_id():
+
+    try:
+        with open(LAST_MSG_FILE, "r") as f:
+            return int(f.read().strip())
+    except:
+        return 0
+
+
+def save_last_msg_id(msg_id):
+
+    with open(LAST_MSG_FILE, "w") as f:
+        f.write(str(msg_id))
 
 
 def save_trade(value):
@@ -129,8 +146,26 @@ def read_week_trades():
     return total, count
 
 
+def process_trade(text):
+
+    match = re.search(pattern, text)
+
+    if not match:
+        return None
+
+    trade_type = match.group(1)
+    value = float(match.group(2))
+
+    if trade_type == "ขาดทุน":
+        value = -abs(value)
+    else:
+        value = abs(value)
+
+    return value
+
+
 # -----------------------
-# Admin Only Menu
+# Admin Menu
 # -----------------------
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -140,7 +175,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     member = await context.bot.get_chat_member(chat_id, user_id)
 
-    # ถ้าไม่ใช่ Admin บอทจะเงียบ
     if member.status not in ["administrator", "creator"]:
         return
 
@@ -162,19 +196,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = update.message.text
+    msg_id = update.message.message_id
 
-    if not text:
+    last_id = get_last_msg_id()
+
+    if msg_id <= last_id:
         return
 
-    match = re.search(pattern, text)
+    value = process_trade(text)
 
-    if match:
-
-        value = float(match.group(2))
+    if value is not None:
 
         save_trade(value)
 
         print("Trade saved:", value)
+
+    save_last_msg_id(msg_id)
+
 
     if text == "📊 กำไรวันนี้":
 
