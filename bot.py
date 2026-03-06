@@ -14,7 +14,7 @@ TH_TZ = ZoneInfo("Asia/Bangkok")
 TOKEN = os.getenv("TOKEN")
 
 # -------------------------
-# Google Sheet Setup (The Ultimate Fix)
+# Google Sheet Setup
 # -------------------------
 
 SHEET_NAME = "CopyTradeTracker"
@@ -93,7 +93,8 @@ thai_months = [
 def save_chat_id(cid):
     try:
         if config_sheet:
-            config_sheet.update("A1", [[str(cid)]])
+            # แก้ไข DeprecationWarning: ใช้ named arguments (range_name และ values)
+            config_sheet.update(range_name="A1", values=[[str(cid)]])
     except Exception as e:
         print(f"Save Chat ID Error: {e}")
 
@@ -220,7 +221,7 @@ def process_trade(text):
 
     symbol = re.search(r'([A-Z]{3,6}USD\.?[A-Z]*)', text)
     trade_type = re.search(r'\b(BUY|SELL)\b', text)
-    lot = re.search(r'(\d+\.?\d*)\s*lot', text, re.IGNORECASE)
+    lot_match = re.search(r'(\d+\.?\d*)\s*lot', text, re.IGNORECASE)
     open_price = re.search(r'ราคาเปิด[: ]\s*([\d,.]+)', text)
     close_price = re.search(r'ราคาปิด[: ]\s*([\d,.]+)', text)
     profit_match = re.search(r'(กำไร|ขาดทุน)[: ]\s*([+-]?\d+\.?\d*)', text)
@@ -228,14 +229,19 @@ def process_trade(text):
     if not profit_match:
         return None
 
+    # แปลงกำไร/ขาดทุน
     value = float(profit_match.group(2))
     if profit_match.group(1) == "ขาดทุน":
         value = -abs(value)
 
+    # แก้ไขการคำนวณ Lot: หารด้วย 10,000 (100.00 -> 0.01)
+    raw_lot = float(lot_match.group(1)) if lot_match else 0
+    calculated_lot = raw_lot / 10000
+
     trade_data = {
         "symbol": symbol.group(1) if symbol else "UNKNOWN",
         "type": trade_type.group(1) if trade_type else "UNKNOWN",
-        "lot": float(lot.group(1)) if lot else 0,
+        "lot": calculated_lot,
         "open": float(open_price.group(1).replace(",", "")) if open_price else 0,
         "close": float(close_price.group(1).replace(",", "")) if close_price else 0,
         "profit": value
@@ -263,7 +269,6 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print("Menu error:", e)
 
-# ฟังก์ชันเช็คเวลาไทย (แถมให้)
 async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TH_TZ)
     current_time = now.strftime("%H:%M:%S")
@@ -344,7 +349,7 @@ def main():
 
     # Handlers
     app.add_handler(CommandHandler("menu", menu))
-    app.add_handler(CommandHandler("checktime", check_time)) # เพิ่มคำสั่งเช็คเวลา
+    app.add_handler(CommandHandler("checktime", check_time))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # Job Queue
