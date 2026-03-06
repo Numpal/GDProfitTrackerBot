@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
-
 TH_TZ = ZoneInfo("Asia/Bangkok")
 
 TOKEN = os.getenv("TOKEN")
@@ -25,15 +24,15 @@ keyboard = [
 
 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-
-pattern = r'(กำไร|ขาดทุน):\s*([+-]?\d+\.?\d*)\s*USD'
-
-
 thai_months = [
     "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
     "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"
 ]
 
+
+# -------------------------
+# Utilities
+# -------------------------
 
 def thai_date():
 
@@ -81,19 +80,33 @@ def save_last_msg_id(msg_id):
         f.write(str(msg_id))
 
 
-def save_trade(value):
+# -------------------------
+# Save / Read Trades
+# -------------------------
+
+def save_trade(trade):
 
     with open(DATA_FILE, "a", newline="", encoding="utf-8") as f:
 
         writer = csv.writer(f)
 
-        writer.writerow([datetime.now(TH_TZ).isoformat(), value])
+        writer.writerow([
+            datetime.now(TH_TZ).isoformat(),
+            trade["symbol"],
+            trade["type"],
+            trade["lot"],
+            trade["open"],
+            trade["close"],
+            trade["profit"]
+        ])
 
 
 def read_trades(days):
 
     total = 0
     count = 0
+    win = 0
+    lose = 0
 
     try:
 
@@ -104,23 +117,32 @@ def read_trades(days):
             for row in reader:
 
                 date = datetime.fromisoformat(row[0])
-                value = float(row[1])
+                profit = float(row[6])
 
                 if datetime.now(TH_TZ) - date <= timedelta(days=days):
 
-                    total += value
+                    total += profit
                     count += 1
+
+                    if profit > 0:
+                        win += 1
+                    else:
+                        lose += 1
 
     except FileNotFoundError:
         pass
 
-    return total, count
+    winrate = (win / count * 100) if count > 0 else 0
+
+    return total, count, win, lose, winrate
 
 
 def read_week_trades():
 
     total = 0
     count = 0
+    win = 0
+    lose = 0
 
     now = datetime.now(TH_TZ)
 
@@ -138,40 +160,68 @@ def read_week_trades():
             for row in reader:
 
                 date = datetime.fromisoformat(row[0])
-                value = float(row[1])
+                profit = float(row[6])
 
                 if date >= sunday_start:
 
-                    total += value
+                    total += profit
                     count += 1
+
+                    if profit > 0:
+                        win += 1
+                    else:
+                        lose += 1
 
     except FileNotFoundError:
         pass
 
-    return total, count
+    winrate = (win / count * 100) if count > 0 else 0
 
+    return total, count, win, lose, winrate
+
+
+# -------------------------
+# Parse Copy Trade Message
+# -------------------------
 
 def process_trade(text):
 
-    match = re.search(pattern, text)
-
-    if not match:
+    if "ปิดออเดอร์" not in text:
         return None
 
-    trade_type = match.group(1)
-    value = float(match.group(2))
+    symbol = re.search(r'(XAUUSD\.\w+)', text)
+    trade_type = re.search(r'(BUY|SELL)', text)
+    lot = re.search(r'(\d+\.?\d*)\s*lot', text)
+    open_price = re.search(r'ราคาเปิด:\s*([\d,\.]+)', text)
+    close_price = re.search(r'ราคาปิด:\s*([\d,\.]+)', text)
+    profit_match = re.search(r'(กำไร|ขาดทุน):\s*([+-]?\d+\.?\d*)\s*USD', text)
 
-    if trade_type == "ขาดทุน":
+    if not profit_match:
+        return None
+
+    trade_result = profit_match.group(1)
+    value = float(profit_match.group(2))
+
+    if trade_result == "ขาดทุน":
         value = -abs(value)
     else:
         value = abs(value)
 
-    return value
+    trade_data = {
+        "symbol": symbol.group(1) if symbol else "UNKNOWN",
+        "type": trade_type.group(1) if trade_type else "UNKNOWN",
+        "lot": float(lot.group(1)) if lot else 0,
+        "open": float(open_price.group(1).replace(",", "")) if open_price else 0,
+        "close": float(close_price.group(1).replace(",", "")) if close_price else 0,
+        "profit": value
+    }
+
+    return trade_data
 
 
-# -----------------------
-# Admin Menu
-# -----------------------
+# -------------------------
+# Menu
+# -------------------------
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -191,9 +241,9 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# -----------------------
+# -------------------------
 # Handle Message
-# -----------------------
+# -------------------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -208,45 +258,62 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if msg_id <= last_id:
         return
 
-    value = process_trade(text)
+    trade = process_trade(text)
 
-    if value is not None:
+    if trade:
 
-        save_trade(value)
+        save_trade(trade)
 
-        print("Trade saved:", value)
+        print("Trade Saved:", trade)
 
     save_last_msg_id(msg_id)
 
 
     if text == "📊 กำไรวันนี้":
 
-        total, count = read_trades(1)
+        total, count, win, lose, winrate = read_trades(1)
 
         await update.message.reply_text(
-            f"📊 รายงานวันนี้\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
+            f"📊 รายงานวันนี้\n\n"
+            f"จำนวนไม้: {count}\n"
+            f"Win: {win}\n"
+            f"Lose: {lose}\n"
+            f"Winrate: {round(winrate,2)}%\n\n"
+            f"กำไรสุทธิ: {round(total,2)} USD"
         )
+
 
     elif text == "📅 กำไรสัปดาห์นี้":
 
-        total, count = read_week_trades()
+        total, count, win, lose, winrate = read_week_trades()
 
         await update.message.reply_text(
-            f"📅 สรุปกำไรสัปดาห์นี้\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
+            f"📅 รายงานสัปดาห์นี้\n\n"
+            f"จำนวนไม้: {count}\n"
+            f"Win: {win}\n"
+            f"Lose: {lose}\n"
+            f"Winrate: {round(winrate,2)}%\n\n"
+            f"กำไรสุทธิ: {round(total,2)} USD"
         )
+
 
     elif text == "📈 กำไร 30 วัน":
 
-        total, count = read_trades(30)
+        total, count, win, lose, winrate = read_trades(30)
 
         await update.message.reply_text(
-            f"📈 รายงาน 30 วัน\n\nจำนวนไม้: {count}\nกำไรสุทธิ: {round(total,2)} USC"
+            f"📈 รายงาน 30 วัน\n\n"
+            f"จำนวนไม้: {count}\n"
+            f"Win: {win}\n"
+            f"Lose: {lose}\n"
+            f"Winrate: {round(winrate,2)}%\n\n"
+            f"กำไรสุทธิ: {round(total,2)} USD"
         )
 
 
-# -----------------------
+# -------------------------
 # Auto Reports
-# -----------------------
+# -------------------------
 
 async def send_thai_date(context: ContextTypes.DEFAULT_TYPE):
 
@@ -255,9 +322,10 @@ async def send_thai_date(context: ContextTypes.DEFAULT_TYPE):
     if chat_id == 0:
         return
 
-    message = f"📅 วันนี้คือ\n{thai_date()}"
-
-    await context.bot.send_message(chat_id=chat_id, text=message)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"📅 วันนี้คือ\n{thai_date()}"
+    )
 
 
 async def daily_report(context: ContextTypes.DEFAULT_TYPE):
@@ -267,12 +335,15 @@ async def daily_report(context: ContextTypes.DEFAULT_TYPE):
     if chat_id == 0:
         return
 
-    total, count = read_trades(1)
+    total, count, win, lose, winrate = read_trades(1)
 
     message = (
         "📊 สรุปกำไรประจำวัน\n\n"
         f"จำนวนไม้: {count}\n"
-        f"กำไรสุทธิ: {round(total,2)} USC"
+        f"Win: {win}\n"
+        f"Lose: {lose}\n"
+        f"Winrate: {round(winrate,2)}%\n\n"
+        f"กำไรสุทธิ: {round(total,2)} USD"
     )
 
     await context.bot.send_message(chat_id=chat_id, text=message)
@@ -285,20 +356,23 @@ async def weekly_report(context: ContextTypes.DEFAULT_TYPE):
     if chat_id == 0:
         return
 
-    total, count = read_week_trades()
+    total, count, win, lose, winrate = read_week_trades()
 
     message = (
         "📅 สรุปกำไรสัปดาห์นี้\n\n"
         f"จำนวนไม้: {count}\n"
-        f"กำไรสุทธิ: {round(total,2)} USC"
+        f"Win: {win}\n"
+        f"Lose: {lose}\n"
+        f"Winrate: {round(winrate,2)}%\n\n"
+        f"กำไรสุทธิ: {round(total,2)} USD"
     )
 
     await context.bot.send_message(chat_id=chat_id, text=message)
 
 
-# -----------------------
+# -------------------------
 # Main
-# -----------------------
+# -------------------------
 
 def main():
 
@@ -312,7 +386,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     job_queue = app.job_queue
-
 
     job_queue.run_daily(
         send_thai_date,
@@ -329,8 +402,7 @@ def main():
         time=time(23,59, tzinfo=TH_TZ)
     )
 
-
-    print("Profit Tracker Bot Running...")
+    print("Copy Trade Tracker Running...")
 
     app.run_polling(drop_pending_updates=True)
 
