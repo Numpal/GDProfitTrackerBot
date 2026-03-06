@@ -74,7 +74,6 @@ keyboard = [
     ["📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน"]
 ]
-# ปรับ resize_keyboard=True และ one_time_keyboard=False เพื่อให้ปุ่มอยู่ถาวร
 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 thai_months = [
@@ -226,40 +225,47 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         chat_id = update.effective_chat.id
         user_id = update.effective_user.id
+        msg_id = update.message.message_id
+        
         member = await context.bot.get_chat_member(chat_id, user_id)
-
         if member.status not in ["administrator", "creator"]:
             return
 
         save_chat_id(chat_id)
 
-        # ส่งเมนูก่อน เพื่อให้แน่ใจว่า Reply Markup ถูกลงทะเบียน
+        # ส่งเมนูพร้อมคีย์บอร์ด
         await context.bot.send_message(
             chat_id=chat_id,
-            text="📊 เปิดใช้งานเมนูรายงานกำไรแล้วครับ\n(ปุ่มจะอยู่ด้านล่างข้างช่องพิมพ์ข้อความ)",
-            reply_markup=reply_markup
+            text="📊 **เปิดใช้งานเมนูรายงานกำไรแล้วครับ**\nปุ่มจะปรากฏอยู่ด้านล่างช่องพิมพ์ข้อความ (รอ 15 วิเพื่อลบคำสั่งนี้)",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
         )
         
-        # ลบคำสั่ง /menu ของ user หลังจากส่งเมนูเสร็จแล้ว 1 วินาที
-        await asyncio.sleep(1)
-        try: await update.message.delete()
-        except: pass
+        # ลบคำสั่ง /menu หลังจากผ่านไป 15 วินาที เพื่อให้ระบบมีเวลาแสดงปุ่ม
+        asyncio.create_task(delete_message_safe(context, chat_id, msg_id, 15))
         
     except Exception as e:
         print("Menu error:", e)
 
 async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    now = datetime.now(TH_TZ)
-    current_time = now.strftime("%H:%M:%S")
-    current_date = thai_date()
-    
-    msg = await update.message.reply_text(f"🕒 เวลาบอทปัจจุบัน (ไทย):\nวันที่: {current_date}\nเวลา: {current_time}")
-    
-    # ลบคำสั่ง user และข้อความบอท
-    await asyncio.sleep(1)
-    try: await update.message.delete()
-    except: pass
-    asyncio.create_task(delete_message_safe(context, update.effective_chat.id, msg.message_id, 15))
+    try:
+        chat_id = update.effective_chat.id
+        user_msg_id = update.message.message_id
+        
+        now = datetime.now(TH_TZ)
+        current_time = now.strftime("%H:%M:%S")
+        current_date = thai_date()
+        
+        msg = await update.message.reply_text(
+            f"🕒 **เวลาบอทปัจจุบัน (ไทย):**\nวันที่: {current_date}\nเวลา: {current_time}",
+            parse_mode="Markdown"
+        )
+        
+        # ลบคำสั่ง user และข้อความบอทหลังจาก 15 วินาที
+        asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 15))
+        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
+    except Exception as e:
+        print("Check time error:", e)
 
 # -------------------------
 # Handle Message
@@ -277,11 +283,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         trade = process_trade(text)
         if trade:
             save_trade(trade, msg_id)
-            return # ถ้าเป็นข้อความเทรด ไม่ต้องทำเงื่อนไขรายงานต่อ
+            return
 
         # ถ้ากดปุ่มรายงาน
         if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"]:
-            # ลบข้อความที่ user กดปุ่ม
+            # ลบข้อความที่ user กดปุ่ม (ลบทันทีได้เพราะปุ่มถูกส่งไปแล้ว)
             try: await update.message.delete()
             except: pass
 
@@ -333,6 +339,7 @@ async def weekly_report(context):
 # -------------------------
 def main():
     if TOKEN is None:
+        print("❌ TOKEN is missing!")
         return
 
     load_processed_ids()
