@@ -84,15 +84,13 @@ except Exception as e:
 # -------------------------
 # Menu Keyboards
 # -------------------------
-# เมนูเต็มรูปแบบ
 main_keyboard = [
     ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน", "💵 แปลงค่าเงิน"],
-    ["🔗 ประวัติย้อนหลังทั้งหมด", "❌ ซ่อนเมนู"]
+    ["🔗 ประวัติย้อนหลังทั้งหมด"] # เอาปุ่มซ่อนเมนูออกแล้ว
 ]
 main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True, one_time_keyboard=False)
 
-# เมนูย่อ (เหลือแค่ปุ่มเปิด)
 mini_keyboard = [["📱 เปิดเมนู"]]
 mini_markup = ReplyKeyboardMarkup(mini_keyboard, resize_keyboard=True, one_time_keyboard=False)
 
@@ -200,9 +198,12 @@ def process_trade(text):
 # Command Handlers
 # -------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ส่งเมนูให้ทันทีเมื่อเริ่มใช้งาน"""
-    save_chat_id(update.effective_chat.id)
-    await update.message.reply_text("🚀 Copy Trade Tracker พร้อมทำงาน!", reply_markup=main_markup)
+    chat_id = update.effective_chat.id
+    save_chat_id(chat_id)
+    msg = await update.message.reply_text("🚀 Copy Trade Tracker พร้อมทำงาน!", reply_markup=main_markup)
+    asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
+    try: await update.message.delete()
+    except: pass
 
 async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -239,7 +240,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = update.message.message_id
         chat_id = update.effective_chat.id
         
-        save_chat_id(chat_id) # อัปเดต ID เพื่อให้ Report ส่งถูกที่เสมอ
+        save_chat_id(chat_id)
 
         # 1. ตรวจสอบข้อมูลเทรด
         trade = process_trade(text)
@@ -253,20 +254,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 processed_ids.add(str(msg_id))
             return
 
-        # 2. ตรวจสอบการกดปุ่มเมนู
-        menu_buttons = ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด", "💵 แปลงค่าเงิน", "❌ ซ่อนเมนู", "📱 เปิดเมนู"]
+        # 2. ตรวจสอบการกดปุ่มเมนู (ลบปุ่มซ่อนเมนูออกแล้ว)
+        menu_buttons = ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด", "💵 แปลงค่าเงิน", "📱 เปิดเมนู"]
         
         if text in menu_buttons:
-            # ลบข้อความที่ผู้ใช้กดปุ่ม เพื่อไม่ให้รก (ถ้ามีสิทธิ์)
             try: await update.message.delete()
             except: pass
 
-            if text == "❌ ซ่อนเมนู":
-                await context.bot.send_message(chat_id=chat_id, text="💤 ซ่อนเมนูแล้ว (คลิกปุ่มด้านล่างเพื่อเปิดใหม่)", reply_markup=mini_markup)
-                return
-
             if text == "📱 เปิดเมนู":
-                await context.bot.send_message(chat_id=chat_id, text="📱 เปิดใช้งานเมนูรายงานผล", reply_markup=main_markup)
+                msg = await context.bot.send_message(chat_id=chat_id, text="📱 เปิดใช้งานเมนูรายงานผล", reply_markup=main_markup)
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
                 return
 
             if text == "💵 แปลงค่าเงิน":
@@ -294,19 +291,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e: print("Handle error:", e)
 
 # -------------------------
-# Auto Reports
+# Auto Reports (ลบการส่งเมนูค้างไว้เพื่อให้หน้าจอสะอาด)
 # -------------------------
 async def daily_report_job(context):
     chat_id = get_chat_id()
     if chat_id:
         total, count = read_trades(1)
-        await context.bot.send_message(chat_id=chat_id, text=f"📊 สรุปวันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD", reply_markup=main_markup)
+        await context.bot.send_message(chat_id=chat_id, text=f"📊 สรุปวันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD")
 
 async def weekly_report_job(context):
     chat_id = get_chat_id()
     if chat_id:
         total, count = read_week_trades()
-        await context.bot.send_message(chat_id=chat_id, text=f"📅 กำไรสะสมสัปดาห์นี้\nไม้: {count}\nกำไรสะสม: {round(total, 2)} USD", reply_markup=main_markup)
+        await context.bot.send_message(chat_id=chat_id, text=f"📅 กำไรสะสมสัปดาห์นี้\nไม้: {count}\nกำไรสะสม: {round(total, 2)} USD")
 
 # -------------------------
 # Main Application
