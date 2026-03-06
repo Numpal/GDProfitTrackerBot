@@ -36,9 +36,6 @@ try:
         raise Exception("G_PRIVATE_KEY is missing in Railway Variables")
 
     # ล้างอักขระพิเศษที่อาจหลุดมาจากการ Copy-Paste
-    # 1. ลบช่องว่างหัวท้าย .strip()
-    # 2. ลบอัญประกาศถ้าเผลอใส่มา .replace('"', '')
-    # 3. แปลงตัวอักษร \n เป็นการขึ้นบรรทัดใหม่จริงๆ .replace('\\n', '\n')
     formatted_key = g_private_key.strip().replace('"', '').replace("'", "").replace("\\n", "\n")
     
     # บังคับตรวจสอบโครงสร้างพื้นฐาน
@@ -246,7 +243,7 @@ def process_trade(text):
     return trade_data
 
 # -------------------------
-# Menu
+# Menu & Time Check
 # -------------------------
 
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -265,6 +262,13 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         print("Menu error:", e)
+
+# ฟังก์ชันเช็คเวลาไทย (แถมให้)
+async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now(TH_TZ)
+    current_time = now.strftime("%H:%M:%S")
+    current_date = thai_date()
+    await update.message.reply_text(f"🕒 เวลาบอทปัจจุบัน (ไทย):\nวันที่: {current_date}\nเวลา: {current_time}")
 
 # -------------------------
 # Handle Message
@@ -334,14 +338,16 @@ def main():
         print("TOKEN not found")
         return
 
-    # เรียกใช้ฟังก์ชันโหลด IDs
     load_processed_ids()
     
     app = ApplicationBuilder().token(TOKEN).build()
 
+    # Handlers
     app.add_handler(CommandHandler("menu", menu))
+    app.add_handler(CommandHandler("checktime", check_time)) # เพิ่มคำสั่งเช็คเวลา
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # Job Queue
     job_queue = app.job_queue
     job_queue.run_daily(send_thai_date, time=time(0, 1, tzinfo=TH_TZ))
     job_queue.run_daily(daily_report, time=time(23, 59, tzinfo=TH_TZ))
