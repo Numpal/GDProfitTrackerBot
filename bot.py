@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 import json
+import base64
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -18,17 +19,20 @@ TOKEN = os.getenv("TOKEN")
 # -------------------------
 
 SHEET_NAME = "CopyTradeTracker"
-CREDS_JSON = os.getenv("GOOGLE_CREDS")
+CREDS_B64 = os.getenv("GOOGLE_CREDS_B64")
 
 scope = [
 "https://spreadsheets.google.com/feeds",
 "https://www.googleapis.com/auth/drive"
 ]
 
-if CREDS_JSON is None:
-    raise Exception("GOOGLE_CREDS not found in environment")
+if CREDS_B64 is None:
+    raise Exception("GOOGLE_CREDS_B64 not found in environment")
 
-creds_dict = json.loads(CREDS_JSON)
+# decode base64 → json
+creds_json = base64.b64decode(CREDS_B64).decode("utf-8")
+creds_dict = json.loads(creds_json)
+
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
 client = gspread.authorize(creds)
