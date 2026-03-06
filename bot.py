@@ -1,7 +1,7 @@
 import re
 import csv
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
 from telegram import Update, ReplyKeyboardMarkup
@@ -46,6 +46,13 @@ def thai_date():
     return f"{day} {month} {year}"
 
 
+def ensure_file(file, default):
+
+    if not os.path.exists(file):
+        with open(file, "w") as f:
+            f.write(str(default))
+
+
 def save_chat_id(chat_id):
 
     with open(CHAT_ID_FILE, "w") as f:
@@ -54,20 +61,18 @@ def save_chat_id(chat_id):
 
 def get_chat_id():
 
-    try:
-        with open(CHAT_ID_FILE, "r") as f:
-            return int(f.read().strip())
-    except:
-        return None
+    ensure_file(CHAT_ID_FILE, 0)
+
+    with open(CHAT_ID_FILE, "r") as f:
+        return int(f.read().strip())
 
 
 def get_last_msg_id():
 
-    try:
-        with open(LAST_MSG_FILE, "r") as f:
-            return int(f.read().strip())
-    except:
-        return 0
+    ensure_file(LAST_MSG_FILE, 0)
+
+    with open(LAST_MSG_FILE, "r") as f:
+        return int(f.read().strip())
 
 
 def save_last_msg_id(msg_id):
@@ -243,11 +248,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Auto Reports
 # -----------------------
 
+async def send_thai_date(context: ContextTypes.DEFAULT_TYPE):
+
+    chat_id = get_chat_id()
+
+    if chat_id == 0:
+        return
+
+    message = f"📅 วันนี้คือ\n{thai_date()}"
+
+    await context.bot.send_message(chat_id=chat_id, text=message)
+
+
 async def daily_report(context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = get_chat_id()
 
-    if chat_id is None:
+    if chat_id == 0:
         return
 
     total, count = read_trades(1)
@@ -265,7 +282,7 @@ async def weekly_report(context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = get_chat_id()
 
-    if chat_id is None:
+    if chat_id == 0:
         return
 
     total, count = read_week_trades()
@@ -275,18 +292,6 @@ async def weekly_report(context: ContextTypes.DEFAULT_TYPE):
         f"จำนวนไม้: {count}\n"
         f"กำไรสุทธิ: {round(total,2)} USC"
     )
-
-    await context.bot.send_message(chat_id=chat_id, text=message)
-
-
-async def send_thai_date(context: ContextTypes.DEFAULT_TYPE):
-
-    chat_id = get_chat_id()
-
-    if chat_id is None:
-        return
-
-    message = f"📅 วันนี้คือ\n{thai_date()}"
 
     await context.bot.send_message(chat_id=chat_id, text=message)
 
@@ -308,24 +313,26 @@ def main():
 
     job_queue = app.job_queue
 
+
     job_queue.run_daily(
         send_thai_date,
-        time=datetime.strptime("00:01", "%H:%M").time()
+        time=time(0,1, tzinfo=TH_TZ)
     )
 
     job_queue.run_daily(
         daily_report,
-        time=datetime.strptime("23:59", "%H:%M").time()
+        time=time(23,59, tzinfo=TH_TZ)
     )
 
     job_queue.run_daily(
         weekly_report,
-        time=datetime.strptime("23:59", "%H:%M").time()
+        time=time(23,59, tzinfo=TH_TZ)
     )
+
 
     print("Profit Tracker Bot Running...")
 
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
