@@ -249,7 +249,7 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
             
-        # ลบข้อความเรียกเมนูหลังจาก 60 วินาที
+        # ลบข้อความเรียกเมนูหลังจาก 60 วินาที เพื่อให้ผู้ใช้มีเวลาเห็นคีย์บอร์ด
         asyncio.create_task(delete_message_safe(context, chat_id, temp_msg.message_id, 60))
         
     except Exception as e:
@@ -292,32 +292,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด"]:
-            # ลบข้อความที่ User กดปุ่มทันทีเพื่อความสะอาด (ยกเว้นปุ่มลิงก์)
+            # ลบข้อความที่ User กดปุ่มทันทีเพื่อความสะอาด
             try: 
-                if text != "🔗 ประวัติย้อนหลังทั้งหมด":
-                    await update.message.delete()
-                else:
-                    # ถ้ากดปุ่มลิงก์ ให้ลบข้อความปุ่มเพื่อไม่ให้รก
-                    await update.message.delete()
+                await update.message.delete()
             except: pass
 
             if text == "📊 กำไรวันนี้":
                 total, count = read_trades(1)
                 report_text = f"📊 วันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD"
                 msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
-                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 30))
+                # ปรับเป็น 15 วินาที
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
             elif text == "📅 กำไรสัปดาห์นี้":
                 total, count = read_week_trades()
                 report_text = f"📅 สัปดาห์นี้ (สะสม)\nไม้: {count}\nกำไร: {round(total, 2)} USD"
                 msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
-                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 30))
+                # ปรับเป็น 15 วินาที
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
             elif text == "📈 กำไร 30 วัน":
                 total, count = read_trades(30)
                 report_text = f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD"
                 msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
-                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 30))
+                # ปรับเป็น 15 วินาที
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
             elif text == "🔗 ประวัติย้อนหลังทั้งหมด":
                 msg = await context.bot.send_message(
@@ -325,8 +324,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text="📑 คลิกปุ่มด้านล่างเพื่อเปิดดูประวัติการเทรดใน Google Sheets:",
                     reply_markup=sheet_inline_keyboard
                 )
-                # ลบข้อความปุ่มลิงก์หลังจาก 60 วินาที
-                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 60))
+                # ปรับเป็น 15 วินาที ตามที่ขอ
+                asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
     except Exception as e:
         print("Message error:", e)
