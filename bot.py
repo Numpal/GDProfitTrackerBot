@@ -233,16 +233,18 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_chat_id(chat_id)
 
-        # ส่งเมนูพร้อมคีย์บอร์ด
-        await context.bot.send_message(
+        # บอทส่ง "รูปปุ่ม" ไปให้ผู้ใช้โดยไม่พิมพ์ข้อความใดๆ (ใช้วิธีลบข้อความเดิมเพื่อ Trigger)
+        # หมายเหตุ: ใน Telegram API การเปิดคีย์บอร์ดจำเป็นต้องส่ง message อย่างน้อย 1 ครั้ง
+        # ผมจึงส่งเป็นข้อความว่าง/จุด เพื่อเปิดคีย์บอร์ด แล้วสั่งลบทิ้งทันทีครับ
+        msg = await context.bot.send_message(
             chat_id=chat_id,
-            text="📊 **เปิดใช้งานเมนูรายงานกำไรแล้วครับ**\nปุ่มจะปรากฏอยู่ด้านล่างช่องพิมพ์ข้อความ (รอ 15 วิเพื่อลบคำสั่งนี้)",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            text="เรียกใช้งานคีย์บอร์ด...", # ข้อความชั่วคราวที่จะหายไป
+            reply_markup=reply_markup
         )
         
-        # ลบคำสั่ง /menu หลังจากผ่านไป 15 วินาที เพื่อให้ระบบมีเวลาแสดงปุ่ม
-        asyncio.create_task(delete_message_safe(context, chat_id, msg_id, 15))
+        # ลบคำสั่ง /menu และข้อความชั่วคราวหลังจากผ่านไป 1 วินาที (เพื่อให้ปุ่มเด้งขึ้นมาก่อน)
+        asyncio.create_task(delete_message_safe(context, chat_id, msg_id, 1))
+        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 1))
         
     except Exception as e:
         print("Menu error:", e)
@@ -261,7 +263,6 @@ async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        # ลบคำสั่ง user และข้อความบอทหลังจาก 15 วินาที
         asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 15))
         asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
     except Exception as e:
@@ -279,15 +280,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = update.message.message_id
         chat_id = update.effective_chat.id
         
-        # ตรวจสอบว่าเป็นข้อความเทรดหรือไม่
         trade = process_trade(text)
         if trade:
             save_trade(trade, msg_id)
             return
 
-        # ถ้ากดปุ่มรายงาน
         if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"]:
-            # ลบข้อความที่ user กดปุ่ม (ลบทันทีได้เพราะปุ่มถูกส่งไปแล้ว)
             try: await update.message.delete()
             except: pass
 
@@ -301,7 +299,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 total, count = read_trades(30)
                 report_text = f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD"
             
-            # ส่งรายงานและตั้งเวลาลบ 15 วิ
             msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
