@@ -50,6 +50,10 @@ thai_months = [
     "กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"
 ]
 
+thai_days = [
+    "วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์"
+]
+
 # -------------------------
 # Google Sheet Connection
 # -------------------------
@@ -81,14 +85,13 @@ except Exception as e:
     print(f"❌ Error during Google Sheets setup: {e}")
 
 # -------------------------
-# Menu Keyboards (ปรับปรุงให้คงอยู่ถาวร)
+# Menu Keyboards
 # -------------------------
 main_keyboard = [
     ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน", "💵 แปลงค่าเงิน"],
     ["🔗 ประวัติย้อนหลังทั้งหมด"]
 ]
-# เพิ่ม is_persistent=True เพื่อให้ปุ่มไม่หดหายไปเองในมือถือ
 main_markup = ReplyKeyboardMarkup(
     main_keyboard, 
     resize_keyboard=True, 
@@ -118,9 +121,12 @@ def get_chat_id():
         return 0
     except: return 0
 
-def thai_date():
+def thai_date_full():
     now = datetime.now(TH_TZ)
-    return f"{now.day} {thai_months[now.month-1]} {now.year+543}"
+    # weekday() ใน Python: 0=Monday, 6=Sunday
+    day_name = thai_days[now.weekday()]
+    month_name = thai_months[now.month-1]
+    return f"{day_name}ที่ {now.day:02d} {month_name} {now.year+543}"
 
 async def delete_message_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, delay: int = 15):
     await asyncio.sleep(delay)
@@ -203,11 +209,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     save_chat_id(chat_id)
     
-    # 1. ส่งข้อความแจ้งเตือนสถานะ (อันนี้จะถูกลบทิ้งใน 15 วินาที)
     status_msg = await update.message.reply_text("🚀 ระบบ Tracker กำลังเชื่อมต่อ...")
     asyncio.create_task(delete_message_safe(context, chat_id, status_msg.message_id, 15))
 
-    # 2. ส่งข้อความหลักที่จะ "ยึด" ปุ่มเมนูไว้ถาวร (ห้ามใช้ delete_message_safe กับข้อความนี้)
     await context.bot.send_message(
         chat_id=chat_id,
         text="📊 **Copy Trade Tracker**\nเลือกดูรายงานจากเมนูด้านล่างได้ตลอดเวลาครับ",
@@ -215,7 +219,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_markup
     )
 
-    # ลบข้อความคำสั่งที่ผู้ใช้ส่งมา (/start หรือ /menu) เพื่อให้แชทสะอาด
     try: await update.message.delete()
     except: pass
 
@@ -256,7 +259,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         save_chat_id(chat_id)
 
-        # 1. ตรวจสอบข้อมูลเทรด
         trade = process_trade(text)
         if trade:
             if str(msg_id) not in processed_ids and trade_sheet:
@@ -268,11 +270,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 processed_ids.add(str(msg_id))
             return
 
-        # 2. ตรวจสอบการกดปุ่มเมนู
         menu_buttons = ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด", "💵 แปลงค่าเงิน"]
         
         if text in menu_buttons:
-            # ลบข้อความที่ผู้ใช้กดปุ่มมา เพื่อไม่ให้รกหน้าจอ
             try: await update.message.delete()
             except: pass
 
@@ -295,15 +295,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
                 return
 
-            # ส่งรายงานกำไร (และตั้งให้ลบทิ้งใน 15 วินาทีเพื่อความสะอาด)
             msg = await context.bot.send_message(chat_id=chat_id, text=report)
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
     except Exception as e: print("Handle error:", e)
 
 # -------------------------
-# Auto Reports
+# Auto Reports & Jobs
 # -------------------------
+async def morning_date_job(context: ContextTypes.DEFAULT_TYPE):
+    chat_id = get_chat_id()
+    if chat_id:
+        date_text = thai_date_full()
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=f"📅 {date_text}",
+            parse_mode="Markdown"
+        )
+
 async def daily_report_job(context):
     chat_id = get_chat_id()
     if chat_id:
@@ -333,6 +342,10 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     job_queue = app.job_queue
+    # เพิ่ม Job ใหม่: แจ้งวันเดือนปี ทุกเวลา 02:47
+    job_queue.run_daily(morning_date_job, time=time(2, 47, tzinfo=TH_TZ))
+    
+    # Jobs เดิม
     job_queue.run_daily(daily_report_job, time=time(23, 59, tzinfo=TH_TZ))
     job_queue.run_daily(weekly_report_job, time=time(23, 59, tzinfo=TH_TZ))
 
