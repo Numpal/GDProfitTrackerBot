@@ -25,6 +25,9 @@ scope = [
 "https://www.googleapis.com/auth/drive"
 ]
 
+if CREDS_JSON is None:
+    raise Exception("GOOGLE_CREDS not found in environment")
+
 creds_dict = json.loads(CREDS_JSON)
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 
@@ -68,7 +71,13 @@ def save_chat_id(cid):
 def get_chat_id():
 
     try:
-        return int(config_sheet.acell("A1").value)
+        value = config_sheet.acell("A1").value
+
+        if value:
+            return int(value)
+
+        return 0
+
     except:
         return 0
 
@@ -88,10 +97,18 @@ def thai_date():
 
 def load_processed_ids():
 
-    rows = trade_sheet.col_values(8)
+    try:
 
-    for r in rows[1:]:
-        processed_ids.add(r)
+        rows = trade_sheet.col_values(8)
+
+        for r in rows[1:]:
+            processed_ids.add(r)
+
+        print("Loaded processed ids:", len(processed_ids))
+
+    except Exception as e:
+
+        print("Load processed id error:", e)
 
 # -------------------------
 # Save Trade
@@ -99,21 +116,27 @@ def load_processed_ids():
 
 def save_trade(trade,msg_id):
 
-    if str(msg_id) in processed_ids:
-        return
+    try:
 
-    trade_sheet.append_row([
-        datetime.now(TH_TZ).isoformat(),
-        trade["symbol"],
-        trade["type"],
-        trade["lot"],
-        trade["open"],
-        trade["close"],
-        trade["profit"],
-        msg_id
-    ])
+        if str(msg_id) in processed_ids:
+            return
 
-    processed_ids.add(str(msg_id))
+        trade_sheet.append_row([
+            datetime.now(TH_TZ).isoformat(),
+            trade["symbol"],
+            trade["type"],
+            trade["lot"],
+            trade["open"],
+            trade["close"],
+            trade["profit"],
+            msg_id
+        ])
+
+        processed_ids.add(str(msg_id))
+
+    except Exception as e:
+
+        print("Save trade error:", e)
 
 # -------------------------
 # Read Trades
@@ -126,6 +149,8 @@ def read_trades(days):
     total = 0
     count = 0
 
+    now = datetime.now(TH_TZ)
+
     for row in rows[1:]:
 
         try:
@@ -133,7 +158,8 @@ def read_trades(days):
             date = datetime.fromisoformat(row[0])
             profit = float(row[6])
 
-            if datetime.now(TH_TZ) - date <= timedelta(days=days):
+            if now - date <= timedelta(days=days):
+
                 total += profit
                 count += 1
 
@@ -166,6 +192,7 @@ def read_week_trades():
             profit = float(row[6])
 
             if date >= sunday:
+
                 total += profit
                 count += 1
 
@@ -218,20 +245,26 @@ def process_trade(text):
 
 async def menu(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    chat_id=update.effective_chat.id
-    user_id=update.effective_user.id
+    try:
 
-    member=await context.bot.get_chat_member(chat_id,user_id)
+        chat_id=update.effective_chat.id
+        user_id=update.effective_user.id
 
-    if member.status not in ["administrator","creator"]:
-        return
+        member=await context.bot.get_chat_member(chat_id,user_id)
 
-    save_chat_id(chat_id)
+        if member.status not in ["administrator","creator"]:
+            return
 
-    await update.message.reply_text(
-        "📊 Copy Trade Profit Tracker",
-        reply_markup=reply_markup
-    )
+        save_chat_id(chat_id)
+
+        await update.message.reply_text(
+            "📊 Copy Trade Profit Tracker",
+            reply_markup=reply_markup
+        )
+
+    except Exception as e:
+
+        print("Menu error:",e)
 
 # -------------------------
 # Handle Message
@@ -239,42 +272,48 @@ async def menu(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
-    if not update.message:
-        return
+    try:
 
-    text=update.message.text
-    msg_id=update.message.message_id
+        if not update.message:
+            return
 
-    trade=process_trade(text)
+        text=update.message.text
+        msg_id=update.message.message_id
 
-    if trade:
+        trade=process_trade(text)
 
-        save_trade(trade,msg_id)
-        print(f"Trade Saved: {trade}")
+        if trade:
 
-    if text=="📊 กำไรวันนี้":
+            save_trade(trade,msg_id)
+            print("Trade Saved:",trade)
 
-        total,count=read_trades(1)
+        if text=="📊 กำไรวันนี้":
 
-        await update.message.reply_text(
-            f"📊 วันนี้\n\nไม้:{count}\n\nกำไร:{round(total,2)} USD"
-        )
+            total,count=read_trades(1)
 
-    elif text=="📅 กำไรสัปดาห์นี้":
+            await update.message.reply_text(
+                f"📊 วันนี้\n\nไม้:{count}\n\nกำไร:{round(total,2)} USD"
+            )
 
-        total,count=read_week_trades()
+        elif text=="📅 กำไรสัปดาห์นี้":
 
-        await update.message.reply_text(
-            f"📅 สัปดาห์นี้ (สะสม)\n\nไม้:{count}\n\nกำไร:{round(total,2)} USD"
-        )
+            total,count=read_week_trades()
 
-    elif text=="📈 กำไร 30 วัน":
+            await update.message.reply_text(
+                f"📅 สัปดาห์นี้ (สะสม)\n\nไม้:{count}\n\nกำไร:{round(total,2)} USD"
+            )
 
-        total,count=read_trades(30)
+        elif text=="📈 กำไร 30 วัน":
 
-        await update.message.reply_text(
-            f"📈 30 วัน\n\nไม้:{count}\n\nกำไร:{round(total,2)} USD"
-        )
+            total,count=read_trades(30)
+
+            await update.message.reply_text(
+                f"📈 30 วัน\n\nไม้:{count}\n\nกำไร:{round(total,2)} USD"
+            )
+
+    except Exception as e:
+
+        print("Message error:",e)
 
 # -------------------------
 # Auto Reports
@@ -328,6 +367,11 @@ def main():
         return
 
     load_processed_ids()
+
+    chat_id = get_chat_id()
+
+    if chat_id != 0:
+        print("Loaded Chat ID:", chat_id)
 
     app=ApplicationBuilder().token(TOKEN).build()
 
