@@ -18,19 +18,7 @@ TOKEN = os.getenv("TOKEN")
 # -------------------------
 
 SHEET_NAME = "CopyTradeTracker"
-CREDS_JSON = os.getenv("{
-  "type": "service_account",
-  "project_id": "telegram-trade-bot-489404",
-  "private_key_id": "1ef97ca98723e999c1ca1b7f1cb24bae5b59d4af",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC2nc/la5QkHSKz\nghbQJmixpQOBH0Dsg1/clYD5K5zEfMUuqrMwjvChiu8ncEGfp+iM7pnazWdWgK/k\nGPvu8XuUhsjn71ZB0KnXVAUEuOYDgrAlNUCMA+suHjrqZdacKHgWPZe5GPz0TLSL\nPhgFEqBCm0NMUDIF+cDbKIj8paUiachOJ7kXQMwa8miY673w5q5aakuVk2D24PK1\n14vD4Ppg+b5Swi4AeVUQ/CdPf1R5uaTjBMjrm7t3nEhzDCF6amIrGcYSwg0toY8J\nNfPNfPitbU0LsaBty0LHhb+D2gS1BRAXUjk8NGGMY8XvsMMJgzBzrBFVzxelLixZ\nOIj5HN7JAgMBAAECggEAQqKvO73Xnp3rDamIfYemaDwYXUN0Q1lk327GUyWw3JnS\nscakADIIaEn0HmX97C4u0041YfvVm2D1zbu4ImaHe5j7MnbI+NcVQndsJV76v4ku\nkUUvOmgrpvZs9R8YAn9Z4nOzK12M3/AlaTHNPfyf8e4Jzozs0/VghBf0dIxVB4sH\nypsdQxaxddrPyR6Pp6uvCCPkXuGdu2Uv3dCJ7xP/ZuuZgdsx14HDopmm1O4uSPEO\nL4/kkKTkqqz+lmwi99PlG01kBw7p8/do2YsCIB58zSqxpu8uqyyXN8D7bjDUZghz\nYW+zS7t0qpENlc0tgr7JSXQFTSqKAlf7rVRU42IqqQKBgQDo8wYXQXMsXEUDAvRx\n3cZnHDe+OmiT7oYtUClMHSL8baKSWIAvV5IlvW9hS896Sqcqp78AXu2ua+xu3Z8t\niXUGVa2TeHf70yWhE0onfxQH8oM0eJnvAzSaE5tTZm3VqqvPPkCwgEtdnVLQq1DB\nwmFfGCeORiulHvDn3KrOKEXrIwKBgQDIr8brT/KzSU30ZD+GwdbVlDEXP/97V6tC\nZlcMVeYGDh0f4v+739L2KFoflnwc0kRD4t6g3vbqr+fYWSCMBGky0hPNf+btrMUO\nuq5VVwgXw60ycSCVG8O+jwujVx6xyEofaBj0oBcr0g8CFSLi+8P6KZjHeZO9v/X+\nRNg2hq9zIwKBgEKNzFuwk1tFMWJe4b/2gMzMvxBWV7KMH0Gq+WGJoYlFOYFeT6E2\n/8ZQjRXbNvfVhFUnf+Z3OKjwpKg4IVY9Q3X/3IuZi44jEUkn3bPTFsH+g4XmPvSO\nkeTDXUlCpna5QEUBoDHNNbsVS6faikQRaQhmOkbnvWh7opBb92DXGMLJAoGAEona\nUEZ0Xwd4ggj4rVQeqmAkIMeyrAwvL9UQWX1d4FVRb26ivRIyBLc5jA10rZzm3XaJ\npkayfH9/ZUbmcMi/hwhM+ADGrlH1aiTokc2WW8uhpjU5E00bSfEg3BfiJ/4eisQs\n+fwH5+5hoImfTWSAeA17pYGfmjmvWau2ZWMPtg0CgYEAt7MnsabQHykJ6urdKJ3Q\n+XMWX9SCkZc49a8HcUKAtM8sVzYl1dYS1w8Lj2dblLFYhXewmakcv0GuUgg37sm+\nkWWep24eq5J7r2VGANdAs24Uc7woQ0Hg7ENA7KV5BnGt4/rIr/yalJP1EkdgpPdR\nAII2ulZqnb9m+F2GfKNGehM=\n-----END PRIVATE KEY-----\n",
-  "client_email": "telegram-trackerprofit-bot@telegram-trade-bot-489404.iam.gserviceaccount.com",
-  "client_id": "113151832703232573900",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/telegram-trackerprofit-bot%40telegram-trade-bot-489404.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-}")
+CREDS_JSON = os.getenv("GOOGLE_CREDS")
 
 scope = [
 "https://spreadsheets.google.com/feeds",
