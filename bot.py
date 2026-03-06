@@ -74,6 +74,8 @@ keyboard = [
     ["📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน"]
 ]
+# resize_keyboard=True ช่วยให้ปุ่มขนาดพอดีหน้าจอ
+# one_time_keyboard=False เพื่อให้ปุ่มยังคงอยู่หลังจากกดใช้งาน
 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 thai_months = [
@@ -233,18 +235,16 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_chat_id(chat_id)
 
-        # บอทส่ง "รูปปุ่ม" ไปให้ผู้ใช้โดยไม่พิมพ์ข้อความใดๆ (ใช้วิธีลบข้อความเดิมเพื่อ Trigger)
-        # หมายเหตุ: ใน Telegram API การเปิดคีย์บอร์ดจำเป็นต้องส่ง message อย่างน้อย 1 ครั้ง
-        # ผมจึงส่งเป็นข้อความว่าง/จุด เพื่อเปิดคีย์บอร์ด แล้วสั่งลบทิ้งทันทีครับ
+        # ส่งข้อความชั่วคราวเพื่อเปิดคีย์บอร์ด
         msg = await context.bot.send_message(
             chat_id=chat_id,
-            text="เรียกใช้งานคีย์บอร์ด...", # ข้อความชั่วคราวที่จะหายไป
+            text="เปิดเมนูรายงานแล้ว (ปุ่มจะหายไปใน 1 นาที)...", 
             reply_markup=reply_markup
         )
         
-        # ลบคำสั่ง /menu และข้อความชั่วคราวหลังจากผ่านไป 1 วินาที (เพื่อให้ปุ่มเด้งขึ้นมาก่อน)
-        asyncio.create_task(delete_message_safe(context, chat_id, msg_id, 1))
-        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 1))
+        # ปรับเวลาลบเป็น 60 วินาที (1 นาที) เพื่อให้ปุ่มยังคงอยู่
+        asyncio.create_task(delete_message_safe(context, chat_id, msg_id, 60))
+        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 60))
         
     except Exception as e:
         print("Menu error:", e)
@@ -286,9 +286,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"]:
-            try: await update.message.delete()
-            except: pass
-
+            # เมื่อกดปุ่มรายงาน เราไม่ลบข้อความปุ่มทันที เพื่อให้กดซ้ำได้ถ้าต้องการ
+            # แต่จะส่งรายงานใหม่และตั้งเวลาลบรายงานนั้นแทน
+            
             if text == "📊 กำไรวันนี้":
                 total, count = read_trades(1)
                 report_text = f"📊 วันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD"
@@ -300,6 +300,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 report_text = f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD"
             
             msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
+            # รายงานแต่ละครั้งจะคงอยู่ 15 วินาทีแล้วหายไป
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
     except Exception as e:
