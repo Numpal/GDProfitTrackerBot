@@ -81,14 +81,20 @@ except Exception as e:
     print(f"❌ Error during Google Sheets setup: {e}")
 
 # -------------------------
-# Menu Keyboards (เอาปุ่มซ่อนออกถาวร)
+# Menu Keyboards (ปรับปรุงให้คงอยู่ถาวร)
 # -------------------------
 main_keyboard = [
     ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน", "💵 แปลงค่าเงิน"],
     ["🔗 ประวัติย้อนหลังทั้งหมด"]
 ]
-main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True, one_time_keyboard=False)
+# เพิ่ม is_persistent=True เพื่อให้ปุ่มไม่หดหายไปเองในมือถือ
+main_markup = ReplyKeyboardMarkup(
+    main_keyboard, 
+    resize_keyboard=True, 
+    one_time_keyboard=False,
+    is_persistent=True 
+)
 
 sheet_inline_keyboard = InlineKeyboardMarkup([
     [InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]
@@ -196,8 +202,20 @@ def process_trade(text):
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     save_chat_id(chat_id)
-    msg = await update.message.reply_text("🚀 Copy Trade Tracker พร้อมทำงาน!", reply_markup=main_markup)
-    asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
+    
+    # 1. ส่งข้อความแจ้งเตือนสถานะ (อันนี้จะถูกลบทิ้งใน 15 วินาที)
+    status_msg = await update.message.reply_text("🚀 ระบบ Tracker กำลังเชื่อมต่อ...")
+    asyncio.create_task(delete_message_safe(context, chat_id, status_msg.message_id, 15))
+
+    # 2. ส่งข้อความหลักที่จะ "ยึด" ปุ่มเมนูไว้ถาวร (ห้ามใช้ delete_message_safe กับข้อความนี้)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="📊 **Copy Trade Tracker**\nเลือกดูรายงานจากเมนูด้านล่างได้ตลอดเวลาครับ",
+        parse_mode="Markdown",
+        reply_markup=main_markup
+    )
+
+    # ลบข้อความคำสั่งที่ผู้ใช้ส่งมา (/start หรือ /menu) เพื่อให้แชทสะอาด
     try: await update.message.delete()
     except: pass
 
@@ -254,6 +272,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         menu_buttons = ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด", "💵 แปลงค่าเงิน"]
         
         if text in menu_buttons:
+            # ลบข้อความที่ผู้ใช้กดปุ่มมา เพื่อไม่ให้รกหน้าจอ
             try: await update.message.delete()
             except: pass
 
@@ -276,6 +295,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
                 return
 
+            # ส่งรายงานกำไร (และตั้งให้ลบทิ้งใน 15 วินาทีเพื่อความสะอาด)
             msg = await context.bot.send_message(chat_id=chat_id, text=report)
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
@@ -316,7 +336,7 @@ def main():
     job_queue.run_daily(daily_report_job, time=time(23, 59, tzinfo=TH_TZ))
     job_queue.run_daily(weekly_report_job, time=time(23, 59, tzinfo=TH_TZ))
 
-    print("🚀 Copy Trade Tracker Started (Static Menu Mode)...")
+    print("🚀 Copy Trade Tracker Started (Permanent Menu Mode)...")
     app.run_polling()
 
 if __name__ == "__main__":
