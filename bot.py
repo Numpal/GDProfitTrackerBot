@@ -67,14 +67,15 @@ except Exception as e:
 processed_ids = set()
 
 # -------------------------
-# Menu Keyboard
+# Menu Keyboard (Persistent)
 # -------------------------
 keyboard = [
     ["📊 กำไรวันนี้"],
     ["📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน"]
 ]
-reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+# ปรับ resize_keyboard=True และ one_time_keyboard=False เพื่อให้ปุ่มอยู่ถาวร
+reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 thai_months = [
     "มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน",
@@ -109,12 +110,11 @@ def thai_date():
     return f"{now.day} {thai_months[now.month-1]} {now.year+543}"
 
 async def delete_message_safe(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, delay: int = 15):
-    """ฟังก์ชันลบข้อความหลังจากผ่านไปกี่วินาที (ค่าเริ่มต้น 15 วิ)"""
     await asyncio.sleep(delay)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
-    except TelegramError as e:
-        print(f"⚠️ Could not delete message {message_id}: {e}")
+    except Exception:
+        pass
 
 # -------------------------
 # Load Existing Trades
@@ -127,8 +127,6 @@ def load_processed_ids():
             for r in rows[1:]:
                 processed_ids.add(str(r))
             print("Loaded processed ids:", len(processed_ids))
-        else:
-            print("❌ Cannot load IDs: trade_sheet is not defined")
     except Exception as e:
         print("Load processed id error:", e)
 
@@ -139,7 +137,6 @@ def save_trade(trade, msg_id):
     try:
         if str(msg_id) in processed_ids:
             return
-
         if trade_sheet:
             trade_sheet.append_row([
                 datetime.now(TH_TZ).isoformat(),
@@ -165,7 +162,6 @@ def read_trades(days):
         total = 0
         count = 0
         now = datetime.now(TH_TZ)
-
         for row in rows[1:]:
             try:
                 date = datetime.fromisoformat(row[0])
@@ -173,12 +169,9 @@ def read_trades(days):
                 if now - date <= timedelta(days=days):
                     total += profit
                     count += 1
-            except:
-                continue
+            except: continue
         return total, count
-    except Exception as e:
-        print(f"Read trades error: {e}")
-        return 0, 0
+    except Exception: return 0, 0
 
 def read_week_trades():
     try:
@@ -187,7 +180,6 @@ def read_week_trades():
         now = datetime.now(TH_TZ)
         sunday = now - timedelta(days=(now.weekday()+1)%7)
         sunday = sunday.replace(hour=0, minute=0, second=0, microsecond=0)
-
         total = 0
         count = 0
         for row in rows[1:]:
@@ -197,12 +189,9 @@ def read_week_trades():
                 if date >= sunday:
                     total += profit
                     count += 1
-            except:
-                continue
+            except: continue
         return total, count
-    except Exception as e:
-        print(f"Read week trades error: {e}")
-        return 0, 0
+    except Exception: return 0, 0
 
 # -------------------------
 # Parse CopyTrade Message
@@ -210,25 +199,18 @@ def read_week_trades():
 def process_trade(text):
     if "ปิดออเดอร์" not in text:
         return None
-
     symbol = re.search(r'([A-Z]{3,6}USD\.?[A-Z]*)', text)
     trade_type = re.search(r'\b(BUY|SELL)\b', text)
     lot_match = re.search(r'(\d+\.?\d*)\s*lot', text, re.IGNORECASE)
     open_price = re.search(r'ราคาเปิด[: ]\s*([\d,.]+)', text)
     close_price = re.search(r'ราคาปิด[: ]\s*([\d,.]+)', text)
     profit_match = re.search(r'(กำไร|ขาดทุน)[: ]\s*([+-]?\d+\.?\d*)', text)
-
-    if not profit_match:
-        return None
-
+    if not profit_match: return None
     value = float(profit_match.group(2))
-    if profit_match.group(1) == "ขาดทุน":
-        value = -abs(value)
-
+    if profit_match.group(1) == "ขาดทุน": value = -abs(value)
     raw_lot = float(lot_match.group(1)) if lot_match else 0
     calculated_lot = raw_lot / 10000
-
-    trade_data = {
+    return {
         "symbol": symbol.group(1) if symbol else "UNKNOWN",
         "type": trade_type.group(1) if trade_type else "UNKNOWN",
         "lot": calculated_lot,
@@ -236,7 +218,6 @@ def process_trade(text):
         "close": float(close_price.group(1).replace(",", "")) if close_price else 0,
         "profit": value
     }
-    return trade_data
 
 # -------------------------
 # Menu & Time Check
@@ -251,16 +232,18 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         save_chat_id(chat_id)
-        
-        # ลบคำสั่ง /menu ของ user เพื่อความสะอาด
-        try: await update.message.delete()
-        except: pass
 
-        # ส่งเมนู (ไม่ลบข้อความนี้ เพื่อให้ปุ่มยังคงอยู่)
-        await update.message.reply_text(
-            "📊 เลือกดูรายการกำไรด้านล่างนี้ครับ:",
+        # ส่งเมนูก่อน เพื่อให้แน่ใจว่า Reply Markup ถูกลงทะเบียน
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="📊 เปิดใช้งานเมนูรายงานกำไรแล้วครับ\n(ปุ่มจะอยู่ด้านล่างข้างช่องพิมพ์ข้อความ)",
             reply_markup=reply_markup
         )
+        
+        # ลบคำสั่ง /menu ของ user หลังจากส่งเมนูเสร็จแล้ว 1 วินาที
+        await asyncio.sleep(1)
+        try: await update.message.delete()
+        except: pass
         
     except Exception as e:
         print("Menu error:", e)
@@ -270,11 +253,12 @@ async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_time = now.strftime("%H:%M:%S")
     current_date = thai_date()
     
+    msg = await update.message.reply_text(f"🕒 เวลาบอทปัจจุบัน (ไทย):\nวันที่: {current_date}\nเวลา: {current_time}")
+    
+    # ลบคำสั่ง user และข้อความบอท
+    await asyncio.sleep(1)
     try: await update.message.delete()
     except: pass
-
-    msg = await update.message.reply_text(f"🕒 เวลาบอทปัจจุบัน (ไทย):\nวันที่: {current_date}\nเวลา: {current_time}")
-    # ลบข้อความบอกเวลาหลังจาก 15 วิ
     asyncio.create_task(delete_message_safe(context, update.effective_chat.id, msg.message_id, 15))
 
 # -------------------------
@@ -288,18 +272,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text
         msg_id = update.message.message_id
         chat_id = update.effective_chat.id
+        
+        # ตรวจสอบว่าเป็นข้อความเทรดหรือไม่
         trade = process_trade(text)
-
         if trade:
             save_trade(trade, msg_id)
+            return # ถ้าเป็นข้อความเทรด ไม่ต้องทำเงื่อนไขรายงานต่อ
 
         # ถ้ากดปุ่มรายงาน
         if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"]:
-            # 1. ลบข้อความที่ user กดปุ่มทันที
+            # ลบข้อความที่ user กดปุ่ม
             try: await update.message.delete()
             except: pass
 
-            # 2. เตรียมข้อมูลและส่งรายงาน
             if text == "📊 กำไรวันนี้":
                 total, count = read_trades(1)
                 report_text = f"📊 วันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD"
@@ -310,16 +295,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 total, count = read_trades(30)
                 report_text = f"📈 30 วัน\nไม้: {count}\nกำไร: {round(total, 2)} USD"
             
-            # ส่งรายงาน
-            msg = await update.message.reply_text(report_text)
-            # 3. สั่งลบข้อความรายงานหลังจาก 15 วินาที
+            # ส่งรายงานและตั้งเวลาลบ 15 วิ
+            msg = await context.bot.send_message(chat_id=chat_id, text=report_text)
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
     except Exception as e:
         print("Message error:", e)
 
 # -------------------------
-# Auto Reports (ไม่ลบ)
+# Auto Reports (Scheduled)
 # -------------------------
 async def send_thai_date(context):
     chat_id = get_chat_id()
