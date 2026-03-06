@@ -37,6 +37,7 @@ private_key = GOOGLE_PRIVATE_KEY.replace("\\n", "\n")
 creds_dict = {
 "type": "service_account",
 "project_id": "copy-trade-bot",
+"private_key": os.getenv("GOOGLE_PRIVATE_KEY").replace("\\n","\n")
 "private_key_id": "dummy",
 "private_key": private_key,
 "client_email": GOOGLE_CLIENT_EMAIL,
