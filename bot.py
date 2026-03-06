@@ -6,7 +6,7 @@ import json
 import base64
 
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
@@ -20,34 +20,21 @@ TOKEN = os.getenv("TOKEN")
 
 SHEET_NAME = "CopyTradeTracker"
 
-GOOGLE_PRIVATE_KEY = os.getenv("GOOGLE_PRIVATE_KEY")
-GOOGLE_CLIENT_EMAIL = os.getenv("GOOGLE_CLIENT_EMAIL")
+GOOGLE_CREDS_BASE64 = os.getenv("GOOGLE_CREDS_BASE64")
 
 scope = [
-    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-if not GOOGLE_PRIVATE_KEY or not GOOGLE_CLIENT_EMAIL:
+if not GOOGLE_CREDS_BASE64:
     raise Exception("Google credentials not found")
 
-# Railway newline fix
-private_key = GOOGLE_PRIVATE_KEY.replace("\\n", "\n").strip()
+# Decode Base64 credentials
+creds_json = base64.b64decode(GOOGLE_CREDS_BASE64).decode()
+creds_dict = json.loads(creds_json)
 
-creds_dict = {
-    "type": "service_account",
-    "project_id": "copy-trade-bot",
-    "private_key_id": "dummy",
-    "private_key": private_key,
-    "client_email": GOOGLE_CLIENT_EMAIL,
-    "client_id": "dummy",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": ""
-}
-
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 
 client = gspread.authorize(creds)
 
@@ -84,19 +71,14 @@ thai_months = [
 # -------------------------
 
 def save_chat_id(cid):
-
     config_sheet.update("A1", [[cid]])
 
 def get_chat_id():
-
     try:
         value = config_sheet.acell("A1").value
-
         if value:
             return int(value)
-
         return 0
-
     except:
         return 0
 
@@ -105,9 +87,7 @@ def get_chat_id():
 # -------------------------
 
 def thai_date():
-
     now = datetime.now(TH_TZ)
-
     return f"{now.day} {thai_months[now.month-1]} {now.year+543}"
 
 # -------------------------
@@ -115,18 +95,12 @@ def thai_date():
 # -------------------------
 
 def load_processed_ids():
-
     try:
-
         rows = trade_sheet.col_values(8)
-
         for r in rows[1:]:
             processed_ids.add(r)
-
         print("Loaded processed ids:", len(processed_ids))
-
     except Exception as e:
-
         print("Load processed id error:", e)
 
 # -------------------------
@@ -134,9 +108,7 @@ def load_processed_ids():
 # -------------------------
 
 def save_trade(trade,msg_id):
-
     try:
-
         if str(msg_id) in processed_ids:
             return
 
@@ -154,7 +126,6 @@ def save_trade(trade,msg_id):
         processed_ids.add(str(msg_id))
 
     except Exception as e:
-
         print("Save trade error:", e)
 
 # -------------------------
