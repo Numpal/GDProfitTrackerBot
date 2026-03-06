@@ -10,11 +10,11 @@ from zoneinfo import ZoneInfo
 
 import gspread
 from google.oauth2.service_account import Credentials
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 from telegram.error import TelegramError
 
-# 1. สร้าง Web Server เล็กๆ รันแยกเป็น Thread เพื่อตอบรับ Koyeb
+# 1. สร้าง Web Server เล็กๆ สำหรับ Health Check
 def run_health_check_server():
     port = int(os.getenv("PORT", 8000)) 
     handler = http.server.SimpleHTTPRequestHandler
@@ -29,7 +29,7 @@ threading.Thread(target=run_health_check_server, daemon=True).start()
 # -------------------------
 TH_TZ = ZoneInfo("Asia/Bangkok")
 TOKEN = os.getenv("TOKEN")
-EXCHANGE_RATE = 35.0  # <--- ตั้งค่าเรทเงินบาทที่นี่
+EXCHANGE_RATE = 35.0  
 
 SHEET_NAME = "CopyTradeTracker"
 g_email = os.getenv("G_EMAIL")
@@ -84,12 +84,17 @@ except Exception as e:
 # -------------------------
 # Menu Keyboards
 # -------------------------
-keyboard = [
+# เมนูเต็มรูปแบบ
+main_keyboard = [
     ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้"],
     ["📈 กำไร 30 วัน", "💵 แปลงค่าเงิน"],
-    ["🔗 ประวัติย้อนหลังทั้งหมด"]
+    ["🔗 ประวัติย้อนหลังทั้งหมด", "❌ ซ่อนเมนู"]
 ]
-reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True, one_time_keyboard=False)
+
+# เมนูย่อ (เหลือแค่ปุ่มเปิด)
+mini_keyboard = [["📱 เปิดเมนู"]]
+mini_markup = ReplyKeyboardMarkup(mini_keyboard, resize_keyboard=True, one_time_keyboard=False)
 
 sheet_inline_keyboard = InlineKeyboardMarkup([
     [InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]
@@ -194,12 +199,17 @@ def process_trade(text):
 # -------------------------
 # Command Handlers
 # -------------------------
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ส่งเมนูให้ทันทีเมื่อเริ่มใช้งาน"""
+    save_chat_id(update.effective_chat.id)
+    await update.message.reply_text("🚀 Copy Trade Tracker พร้อมทำงาน!", reply_markup=main_markup)
+
 async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_msg_id = update.message.message_id
     try:
         if not context.args:
-            msg = await update.message.reply_text("💡 วิธีใช้: `/tobath [ตัวเลข]`\nตัวอย่าง: `/tobath 100`", parse_mode="Markdown")
+            msg = await update.message.reply_text("💡 วิธีใช้: `/tobath [ตัวเลข]`", parse_mode="Markdown")
             asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 15))
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
             return
@@ -222,35 +232,6 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 15))
         asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
 
-async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        chat_id = update.effective_chat.id
-        user_id = update.effective_user.id
-        member = await context.bot.get_chat_member(chat_id, user_id)
-        if member.status not in ["administrator", "creator"]: return
-
-        save_chat_id(chat_id)
-        temp_msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text="📱 เรียกใช้งานเมนูรายงานผล (คีย์บอร์ดพร้อมใช้งาน)",
-            reply_markup=reply_markup
-        )
-        try: await update.message.delete()
-        except: pass
-        asyncio.create_task(delete_message_safe(context, chat_id, temp_msg.message_id, 60))
-    except Exception as e: print("Menu error:", e)
-
-async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_msg_id = update.message.message_id
-    now = datetime.now(TH_TZ)
-    msg = await update.message.reply_text(
-        f"🕒 **เวลาบอทปัจจุบัน (ไทย):**\nวันที่: {thai_date()}\nเวลา: {now.strftime('%H:%M:%S')}",
-        parse_mode="Markdown"
-    )
-    asyncio.create_task(delete_message_safe(context, chat_id, user_msg_id, 15))
-    asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not update.message or not update.message.text: return
@@ -258,6 +239,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg_id = update.message.message_id
         chat_id = update.effective_chat.id
         
+        save_chat_id(chat_id) # อัปเดต ID เพื่อให้ Report ส่งถูกที่เสมอ
+
         # 1. ตรวจสอบข้อมูลเทรด
         trade = process_trade(text)
         if trade:
@@ -270,10 +253,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 processed_ids.add(str(msg_id))
             return
 
-        # 2. ตรวจสอบปุ่มเมนู
-        if text in ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด", "💵 แปลงค่าเงิน"]:
+        # 2. ตรวจสอบการกดปุ่มเมนู
+        menu_buttons = ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน", "🔗 ประวัติย้อนหลังทั้งหมด", "💵 แปลงค่าเงิน", "❌ ซ่อนเมนู", "📱 เปิดเมนู"]
+        
+        if text in menu_buttons:
+            # ลบข้อความที่ผู้ใช้กดปุ่ม เพื่อไม่ให้รก (ถ้ามีสิทธิ์)
             try: await update.message.delete()
             except: pass
+
+            if text == "❌ ซ่อนเมนู":
+                await context.bot.send_message(chat_id=chat_id, text="💤 ซ่อนเมนูแล้ว (คลิกปุ่มด้านล่างเพื่อเปิดใหม่)", reply_markup=mini_markup)
+                return
+
+            if text == "📱 เปิดเมนู":
+                await context.bot.send_message(chat_id=chat_id, text="📱 เปิดใช้งานเมนูรายงานผล", reply_markup=main_markup)
+                return
 
             if text == "💵 แปลงค่าเงิน":
                 msg = await context.bot.send_message(chat_id=chat_id, text="💡 พิมพ์ `/tobath [ตัวเลข]` เพื่อแปลงเงินครับ\nตัวอย่าง: `/tobath 100`", parse_mode="Markdown")
@@ -300,23 +294,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e: print("Handle error:", e)
 
 # -------------------------
-# Auto Reports (Scheduled)
+# Auto Reports
 # -------------------------
-async def send_thai_date_job(context):
-    chat_id = get_chat_id()
-    if chat_id: await context.bot.send_message(chat_id=chat_id, text=f"📅 วันนี้\n{thai_date()}")
-
 async def daily_report_job(context):
     chat_id = get_chat_id()
     if chat_id:
         total, count = read_trades(1)
-        await context.bot.send_message(chat_id=chat_id, text=f"📊 สรุปวันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD")
+        await context.bot.send_message(chat_id=chat_id, text=f"📊 สรุปวันนี้\nไม้: {count}\nกำไร: {round(total, 2)} USD", reply_markup=main_markup)
 
 async def weekly_report_job(context):
     chat_id = get_chat_id()
     if chat_id:
         total, count = read_week_trades()
-        await context.bot.send_message(chat_id=chat_id, text=f"📅 กำไรสะสมสัปดาห์นี้\nไม้: {count}\nกำไรสะสม: {round(total, 2)} USD")
+        await context.bot.send_message(chat_id=chat_id, text=f"📅 กำไรสะสมสัปดาห์นี้\nไม้: {count}\nกำไรสะสม: {round(total, 2)} USD", reply_markup=main_markup)
 
 # -------------------------
 # Main Application
@@ -329,17 +319,16 @@ def main():
     load_processed_ids()
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("menu", menu))
-    app.add_handler(CommandHandler("checktime", check_time))
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("menu", start_command))
     app.add_handler(CommandHandler("tobath", tobath_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     job_queue = app.job_queue
-    job_queue.run_daily(send_thai_date_job, time=time(0, 1, tzinfo=TH_TZ))
     job_queue.run_daily(daily_report_job, time=time(23, 59, tzinfo=TH_TZ))
     job_queue.run_daily(weekly_report_job, time=time(23, 59, tzinfo=TH_TZ))
 
-    print("🚀 Copy Trade Tracker Running with Currency Converter...")
+    print("🚀 Copy Trade Tracker Started (Everyone Access & Toggle Menu)...")
     app.run_polling()
 
 if __name__ == "__main__":
