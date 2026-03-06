@@ -10,9 +10,15 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, Comma
 TH_TZ = ZoneInfo("Asia/Bangkok")
 TOKEN = os.getenv("TOKEN")
 
-DATA_FILE = "trades.csv"
-CHAT_ID_FILE = "chat_id.txt"
-LAST_MSG_FILE = "last_message_id.txt"
+# -------------------------
+# Railway Volume Path
+# -------------------------
+
+DATA_DIR = "/data"
+
+DATA_FILE = os.path.join(DATA_DIR, "trades.csv")
+CHAT_ID_FILE = os.path.join(DATA_DIR, "chat_id.txt")
+LAST_MSG_FILE = os.path.join(DATA_DIR, "last_message_id.txt")
 
 keyboard = [
 ["📊 กำไรวันนี้"],
@@ -32,6 +38,8 @@ thai_months = [
 # -------------------------
 
 def ensure_files():
+
+    os.makedirs(DATA_DIR, exist_ok=True)
 
     if not os.path.exists(DATA_FILE):
         with open(DATA_FILE,"w",newline="",encoding="utf-8") as f:
@@ -62,8 +70,11 @@ def save_chat_id(chat_id):
 
 def get_chat_id():
 
-    with open(CHAT_ID_FILE) as f:
-        return int(f.read())
+    try:
+        with open(CHAT_ID_FILE) as f:
+            return int(f.read())
+    except:
+        return 0
 
 def get_last_msg_id():
 
@@ -343,6 +354,18 @@ async def weekly_report(context):
         text=f"📅 กำไรสะสมสัปดาห์นี้\nไม้:{count}\nกำไรสะสม:{round(total,2)} USD"
     )
 
+async def test_message(context):
+
+    chat_id=get_chat_id()
+
+    if chat_id==0:
+        return
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="เทสระบบ ส่งข้อความอัตโนมัติ"
+    )
+
 # -------------------------
 # Main
 # -------------------------
@@ -365,6 +388,14 @@ def main():
     job_queue.run_daily(send_thai_date,time=time(0,1,tzinfo=TH_TZ))
     job_queue.run_daily(daily_report,time=time(23,59,tzinfo=TH_TZ))
     job_queue.run_daily(weekly_report,time=time(23,59,tzinfo=TH_TZ))
+
+    now=datetime.now(TH_TZ)
+    target=datetime(now.year,now.month,now.day,11,5,tzinfo=TH_TZ)
+
+    delay=(target-now).total_seconds()
+
+    if delay>0:
+        job_queue.run_once(test_message,delay)
 
     print("Copy Trade Tracker Running...")
 
