@@ -3,7 +3,6 @@ import os
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 import json
-import base64
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -20,19 +19,17 @@ TOKEN = os.getenv("TOKEN")
 
 SHEET_NAME = "CopyTradeTracker"
 
-GOOGLE_CREDS_BASE64 = os.getenv("GOOGLE_CREDS_BASE64")
+GOOGLE_CREDENTIALS = os.getenv("GOOGLE_CREDENTIALS")
 
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-if not GOOGLE_CREDS_BASE64:
+if not GOOGLE_CREDENTIALS:
     raise Exception("Google credentials not found")
 
-# Decode Base64 credentials
-creds_json = base64.b64decode(GOOGLE_CREDS_BASE64).decode()
-creds_dict = json.loads(creds_json)
+creds_dict = json.loads(GOOGLE_CREDENTIALS)
 
 creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 
