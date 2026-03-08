@@ -123,7 +123,6 @@ def get_chat_id():
 
 def thai_date_full():
     now = datetime.now(TH_TZ)
-    # weekday() ใน Python: 0=Monday, 6=Sunday
     day_name = thai_days[now.weekday()]
     month_name = thai_months[now.month-1]
     return f"{day_name}ที่ {now.day:02d} {month_name} {now.year+543}"
@@ -191,12 +190,14 @@ def process_trade(text):
     if not profit_match: return None
     value = float(profit_match.group(2))
     if profit_match.group(1) == "ขาดทุน": value = -abs(value)
+    
+    # แก้ไขส่วน Lot ให้เป็น 1:1 (ไม่หาร 10000 แล้ว)
     raw_lot = float(lot_match.group(1)) if lot_match else 0
     
     return {
         "symbol": symbol.group(1) if symbol else "UNKNOWN",
         "type": trade_type.group(1) if trade_type else "UNKNOWN",
-        "lot": raw_lot / 10000,
+        "lot": raw_lot, 
         "open": float(open_price.group(1).replace(",", "")) if open_price else 0,
         "close": float(close_price.group(1).replace(",", "")) if close_price else 0,
         "profit": value
@@ -342,10 +343,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     job_queue = app.job_queue
-    # เพิ่ม Job ใหม่: แจ้งวันเดือนปี ทุกเวลา 02:47
     job_queue.run_daily(morning_date_job, time=time(0, 1, tzinfo=TH_TZ))
     
-    # Jobs เดิม
     job_queue.run_daily(daily_report_job, time=time(23, 59, tzinfo=TH_TZ))
     job_queue.run_daily(weekly_report_job, time=time(23, 59, tzinfo=TH_TZ))
 
