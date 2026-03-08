@@ -353,7 +353,8 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
             msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text="ใช้คำสั่ง /tobath 100 เพื่อแปลงเงิน"
+                text="ใช้คำสั่ง /tobath (ยอดเงิน USD) เพื่อแปลงเงิน"
+                เช่น /tobath  100
             )
 
             asyncio.create_task(delete_message_safe(context,chat_id,msg.message_id,DELETE_NORMAL))
