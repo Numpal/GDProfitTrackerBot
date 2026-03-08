@@ -92,14 +92,14 @@ except Exception as e:
     print(f"❌ Error during Google Sheets setup: {e}")
 
 # -------------------------
-# Menu Keyboards
+# Menu Keyboards (แก้ไข is_persistent=False)
 # -------------------------
 main_keyboard = [
-    ["📊 กำไรวันนี้", "📅 กำไรสัปดาห์นี้"],
-    ["📈 กำไร 30 วัน", "🧮 คำนวณตามทุน"],
+    ["🧮 คำนวณตามทุน", "📊 กำไรวันนี้"],
+    ["📅 กำไรสัปดาห์นี้", "📈 กำไร 30 วัน"],
     ["💵 แปลงค่าเงิน", "🔗 ประวัติย้อนหลังทั้งหมด"]
 ]
-main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True, one_time_keyboard=False, is_persistent=True)
+main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True, one_time_keyboard=False, is_persistent=False)
 sheet_inline_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]])
 
 # -------------------------
@@ -373,7 +373,8 @@ async def monthly_report_job(context):
 async def sunday_reset_job(context):
     save_snapshot(3, MASTER_WEEKLY_RESET, "Weekly Reset")
     chat_id = get_chat_id()
-    if chat_id: await context.bot.send_message(chat_id=chat_id, text=f"🔄 รีเซ็ตสัปดาห์ใหม่ ทุน {MASTER_WEEKLY_RESET} USD")
+    if chat_id: 
+        await context.bot.send_message(chat_id=chat_id, text=f"🔄 รีเซ็ตสัปดาห์ใหม่ ทุน {MASTER_WEEKLY_RESET} USD")
 
 # -------------------------
 # Main Application
@@ -386,7 +387,8 @@ def main():
     try:
         if trade_sheet:
             ids = trade_sheet.col_values(8)
-            for r in ids[1:]: processed_ids.add(str(r))
+            for r in ids[1:]: 
+                processed_ids.add(str(r))
     except: pass
 
     app = ApplicationBuilder().token(TOKEN).build()
