@@ -92,7 +92,7 @@ except Exception as e:
     print(f"❌ Error during Google Sheets setup: {e}")
 
 # -------------------------
-# Menu Keyboards (แก้ไข is_persistent=False)
+# Menu Keyboards
 # -------------------------
 main_keyboard = [
     ["🧮 คำนวณตามทุน", "📊 กำไรวันนี้"],
@@ -243,7 +243,8 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not context.args: return
         usd = float(context.args[0].replace(",", ""))
         thb = usd * EXCHANGE_RATE
-        await update.message.reply_text(f"💰 {usd:,.2f} USD ➡️ {thb:,.2f} บาท")
+        msg = await update.message.reply_text(f"💰 {usd:,.2f} USD ➡️ {thb:,.2f} บาท")
+        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
     except: pass
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -283,7 +284,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"━━━━━━━━━━━━━━\n"
                 f"_(อ้างอิงเรท {EXCHANGE_RATE} บาท/USD)_"
             )
-            await update.message.reply_text(calc_report, parse_mode="Markdown")
+            msg = await update.message.reply_text(calc_report, parse_mode="Markdown")
+            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 30))
             return
 
         # Handle menu
@@ -337,7 +339,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e: print("Handle message error:", e)
 
 # -------------------------
-# Auto Jobs
+# Auto Jobs (ไม่ลบข้อความ)
 # -------------------------
 async def morning_date_job(context):
     chat_id = get_chat_id()
