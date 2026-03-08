@@ -341,11 +341,9 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
             msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text==("🧮 คำนวณกำไรตามทุน\n\n"
-            "พิมพ์คำสั่ง\n"
-            "/calc จำนวนทุน\n\n"
-            "ตัวอย่าง\n"
-            "/calc 500"
+                text="🧮 วิธีคำนวณกำไรตามทุน\n\nใช้คำสั่ง\n/calc จำนวนทุน\n\nตัวอย่าง\n/calc 500"
+            )
+
             asyncio.create_task(delete_message_safe(context,chat_id,msg.message_id,DELETE_LONG))
             return
 
