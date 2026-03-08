@@ -248,7 +248,6 @@ def read_month_trades():
 async def start_command(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
-
     save_chat_id(chat_id)
 
     await context.bot.send_message(
@@ -265,11 +264,39 @@ async def tobath_command(update:Update,context:ContextTypes.DEFAULT_TYPE):
     try:
 
         usd = float(context.args[0])
-
         thb = usd * EXCHANGE_RATE
 
         msg = await update.message.reply_text(
             f"💰 {usd:,.2f} USD ➜ {thb:,.2f} บาท"
+        )
+
+        asyncio.create_task(delete_message_safe(context,chat_id,msg.message_id,DELETE_FAST))
+
+        await update.message.delete()
+
+    except:
+        pass
+
+
+async def calc_command(update:Update,context:ContextTypes.DEFAULT_TYPE):
+
+    chat_id = update.effective_chat.id
+
+    try:
+
+        capital = float(context.args[0])
+
+        total,_ = read_trades(1)
+
+        pct = (total/MASTER_WEEKLY_RESET*100) if MASTER_WEEKLY_RESET else 0
+
+        profit = capital*pct/100
+        thb = profit*EXCHANGE_RATE
+
+        msg = await update.message.reply_text(
+            f"🧮 ทุน {capital:,.2f} USD\n"
+            f"กำไร {profit:,.2f} USD\n"
+            f"≈ {thb:,.2f} บาท"
         )
 
         asyncio.create_task(delete_message_safe(context,chat_id,msg.message_id,DELETE_FAST))
@@ -293,33 +320,28 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
         save_chat_id(chat_id)
 
-        # -----------------
-        # MENU
-        # -----------------
-
         if text == "📊 กำไรวันนี้":
 
             total,count = read_trades(1)
-
             report = f"📊 วันนี้\nไม้: {count}\nกำไร: {total:,.2f} USD"
 
         elif text == "📅 กำไรสัปดาห์นี้":
 
             total,count = read_week_trades()
-
             report = f"📅 สัปดาห์นี้\nไม้: {count}\nกำไรสะสม: {total:,.2f} USD"
 
         elif text == "📈 กำไร 30 วัน":
 
             total,count = read_trades(30)
-
             report = f"📈 30 วัน\nไม้: {count}\nกำไร: {total:,.2f} USD"
 
         elif text == "🧮 คำนวณตามทุน":
 
+            await update.message.delete()
+
             msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text="พิมพ์ยอดทุนของคุณ เช่น 500"
+                text="ใช้คำสั่ง /calc 500 เพื่อคำนวณทุน"
             )
 
             asyncio.create_task(delete_message_safe(context,chat_id,msg.message_id,DELETE_LONG))
@@ -327,15 +349,19 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
         elif text == "💵 แปลงค่าเงิน":
 
+            await update.message.delete()
+
             msg = await context.bot.send_message(
                 chat_id=chat_id,
-                text="พิมพ์ /tobath 100 เพื่อแปลงเงิน"
+                text="ใช้คำสั่ง /tobath 100 เพื่อแปลงเงิน"
             )
 
             asyncio.create_task(delete_message_safe(context,chat_id,msg.message_id,DELETE_NORMAL))
             return
 
         elif text == "🔗 ประวัติย้อนหลังทั้งหมด":
+
+            await update.message.delete()
 
             msg = await context.bot.send_message(
                 chat_id=chat_id,
@@ -346,19 +372,6 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
             asyncio.create_task(delete_message_safe(context,chat_id,msg.message_id,DELETE_NORMAL))
             return
 
-        elif text.replace('.', '', 1).isdigit():
-
-            capital = float(text)
-
-            total,_ = read_trades(1)
-
-            pct = (total/MASTER_WEEKLY_RESET*100) if MASTER_WEEKLY_RESET else 0
-
-            profit = capital*pct/100
-            thb = profit*EXCHANGE_RATE
-
-            report = f"🧮 ทุน {capital}\nกำไร {profit:,.2f} USD\n≈ {thb:,.2f} บาท"
-
         else:
             return
 
@@ -366,10 +379,7 @@ async def handle_message(update:Update,context:ContextTypes.DEFAULT_TYPE):
 
         asyncio.create_task(delete_message_safe(context,chat_id,msg.message_id,DELETE_NORMAL))
 
-        try:
-            await update.message.delete()
-        except:
-            pass
+        await update.message.delete()
 
     except:
         pass
@@ -384,11 +394,7 @@ async def morning_date_job(context):
     chat_id = get_chat_id()
 
     if chat_id:
-
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"📅 {thai_date_full()}"
-        )
+        await context.bot.send_message(chat_id=chat_id,text=f"📅 {thai_date_full()}")
 
 
 async def daily_report_job(context):
@@ -444,6 +450,7 @@ def main():
     app.add_handler(CommandHandler("start",start_command))
     app.add_handler(CommandHandler("menu",start_command))
     app.add_handler(CommandHandler("tobath",tobath_command))
+    app.add_handler(CommandHandler("calc",calc_command))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,handle_message))
 
