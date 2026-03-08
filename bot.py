@@ -244,7 +244,11 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         usd = float(context.args[0].replace(",", ""))
         thb = usd * EXCHANGE_RATE
         msg = await update.message.reply_text(f"💰 {usd:,.2f} USD ➡️ {thb:,.2f} บาท")
+        # ลบข้อความตอบกลับหลัง 15 วินาที
         asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
+        # ลบข้อความ /tobath ของผู้ใช้ทันที
+        try: await update.message.delete()
+        except: pass
     except: pass
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -285,10 +289,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"_(อ้างอิงเรท {EXCHANGE_RATE} บาท/USD)_"
             )
             msg = await update.message.reply_text(calc_report, parse_mode="Markdown")
-            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 30))
+            # ลบข้อความตอบกลับหลัง 15 วินาที
+            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
+            # ลบข้อความตัวเลขของผู้ใช้ทันที
+            try: await update.message.delete()
+            except: pass
             return
 
-        # Handle menu
+        # ... เมนูเหมือนเดิม (ไม่ลบข้อความของ Jobs)
         menu_buttons = ["📊 กำไรวันนี้","📅 กำไรสัปดาห์นี้","📈 กำไร 30 วัน","📆 กำไรรายเดือน","🔗 ประวัติย้อนหลังทั้งหมด","💵 แปลงค่าเงิน", "🧮 คำนวณตามทุน"]
         if text in menu_buttons:
             try: await update.message.delete()
@@ -336,7 +344,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             msg = await context.bot.send_message(chat_id=chat_id, text=report)
             asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, 15))
-    except Exception as e: print("Handle message error:", e)
 
 # -------------------------
 # Auto Jobs (ไม่ลบข้อความ)
