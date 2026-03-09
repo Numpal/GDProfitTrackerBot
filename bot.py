@@ -127,19 +127,19 @@ def parse_and_record_trade(text, msg_id):
         if "ปิดออเดอร์" not in text or "กำไร:" not in text:
             return False
 
-        # 1. Symbol/Side: รองรับ Emoji และอักขระพิเศษ
+        # 1. Symbol/Side: ดึงข้อมูลคู่เงินและหน้าเทรด
         symbol_side_match = re.search(r"([\w.]+)\s*(?:🔴|🔵|🟢|⚪|🔵)?\s*(BUY|SELL)", text, re.IGNORECASE)
         
         # 2. Lot
         lot_match = re.search(r"([\d.]+)\s*lot", text, re.IGNORECASE)
         
-        # 3. ราคาเปิด: รองรับ Emoji กราฟ 📈
+        # 3. ราคาเปิด
         open_match = re.search(r"ราคาเปิด:\s*([\d,.]+)", text)
         
-        # 4. ราคาปิด: รองรับ Emoji กราฟ 📉
+        # 4. ราคาปิด
         close_match = re.search(r"ราคาปิด:\s*([\d,.]+)", text)
         
-        # 5. กำไร: รองรับ Emoji ✅ และเครื่องหมาย + -
+        # 5. กำไร: รองรับเครื่องหมายบวกลบและคอมม่า
         profit_match = re.search(r"กำไร:\s*([+-]?[\d,.]+)", text)
 
         if all([symbol_side_match, lot_match, open_match, close_match, profit_match]):
@@ -158,6 +158,7 @@ def parse_and_record_trade(text, msg_id):
             print(f"✅ บันทึกสำเร็จ! {symbol_side_match.group(1)} กำไร: {profit_match.group(1)} USD")
             return True
         else:
+            print("⚠️ ข้อมูลไม่ครบถ้วนตามเงื่อนไข Regex")
             return False
             
     except Exception as e:
@@ -269,16 +270,21 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        if not update.message or not update.message.text: return
-        text = update.message.text
+        # รับข้อความจากทั้งคน บอท และการ Forward
+        msg = update.message or update.channel_post or update.edited_message
+        if not msg or not msg.text: return
+        
+        text = msg.text
         chat_id = update.effective_chat.id
         save_chat_id(chat_id)
 
-        # ตรวจจับและบันทึกข้อมูลออเดอร์อัตโนมัติ (รับจากทุก Source รวมถึง Bot อื่น)
+        # 🟢 ส่วนสำคัญ: ตรวจจับคำว่า "ปิดออเดอร์" เพื่อบันทึกข้อมูล
         if "ปิดออเดอร์" in text:
-            parse_and_record_trade(text, update.message.message_id)
+            parse_and_record_trade(text, msg.message_id)
+            # ถ้าเป็นข้อความสรุปที่เราส่งเอง หรือบอทส่ง ไม่ต้องลบทิ้ง แต่ถ้าเราพิมพ์สั่งเองค่อยลบ (เลือกตามความเหมาะสม)
             return
 
+        # เมนูการทำงานของบอท
         if text == "📊 กำไรวันนี้":
             total, count = read_trades(1)
             master_bal = get_latest_balance(2)
@@ -293,26 +299,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total, count = read_trades(30)
             report = f"📈 30 วัน\nไม้: {count}\nกำไรสะสม: {total:,.2f} USD"
         elif text == "🧮 คำนวณตามทุน":
-            await update.message.delete()
-            msg = await context.bot.send_message(chat_id=chat_id, text="ใช้คำสั่ง /calc จำนวนทุน\nตัวอย่าง /calc 500")
-            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, DELETE_LONG))
+            await msg.delete()
+            sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้คำสั่ง /calc จำนวนทุน\nตัวอย่าง /calc 500")
+            asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_LONG))
             return
         elif text == "💵 แปลงค่าเงิน":
-            await update.message.delete()
-            msg = await context.bot.send_message(chat_id=chat_id, text="ใช้คำสั่ง /tobath (ยอดเงิน USD)")
-            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, DELETE_NORMAL))
+            await msg.delete()
+            sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้คำสั่ง /tobath (ยอดเงิน USD)")
+            asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
             return
         elif text == "🔗 ประวัติย้อนหลังทั้งหมด":
-            await update.message.delete()
-            msg = await context.bot.send_message(chat_id=chat_id, text="📂 เปิดประวัติย้อนหลัง", reply_markup=sheet_inline_keyboard)
-            asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, DELETE_NORMAL))
+            await msg.delete()
+            sent_msg = await context.bot.send_message(chat_id=chat_id, text="📂 เปิดประวัติย้อนหลัง", reply_markup=sheet_inline_keyboard)
+            asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
             return
-        else: return
+        else:
+            return
 
-        msg = await context.bot.send_message(chat_id=chat_id, text=report)
-        asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, DELETE_NORMAL))
-        await update.message.delete()
-    except: pass
+        sent_msg = await context.bot.send_message(chat_id=chat_id, text=report)
+        asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
+        await msg.delete()
+    except Exception as e:
+        print(f"❌ Handle Message Error: {e}")
 
 # -------------------------
 # Scheduled Jobs
@@ -369,16 +377,15 @@ main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
 sheet_inline_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]])
 
 def main():
-    # สร้าง Application และเปิดใช้งาน JobQueue
+    # ปรับ Filter ในการสร้าง Application ให้รองรับข้อมูลที่กว้างขึ้น
     app = ApplicationBuilder().token(TOKEN).build()
     
-    # คำสั่งพื้นฐาน
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("menu", start_command))
     app.add_handler(CommandHandler("calc", calc_command))
     app.add_handler(CommandHandler("tobath", tobath_command))
     
-    # MessageHandler: ปรับ Filter ให้รับข้อความทั่วไปจากทุกแหล่ง (รวมถึงบอทอื่น)
+    # แก้ไขจุดสำคัญ: ใช้ filters.ALL เพื่อให้ MessageHandler รับข้อมูลจากทุกแหล่งรวมถึงบอทอื่น
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     job_queue = app.job_queue
@@ -387,7 +394,7 @@ def main():
     job_queue.run_daily(daily_report_and_compound_job, time=time(23, 58, tzinfo=TH_TZ))
     job_queue.run_daily(weekly_reset_job, time=time(23, 59, tzinfo=TH_TZ))
 
-    print("🚀 Bot Started | Auto-Recording Mode Active")
+    print("🚀 Bot Started | Monitoring All Messages...")
     app.run_polling()
 
 if __name__ == "__main__":
