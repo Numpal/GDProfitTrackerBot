@@ -3,7 +3,7 @@ import socketserver
 import threading
 import os
 import asyncio
-import re  # เพิ่ม re สำหรับดึงข้อมูลจากข้อความ
+import re
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
@@ -18,9 +18,12 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, Comma
 def run_health_check_server():
     port = int(os.getenv("PORT", 8000))
     handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer(("", port), handler) as httpd:
-        print(f"✅ Health check server started on port {port}")
-        httpd.serve_forever()
+    try:
+        with socketserver.TCPServer(("", port), handler) as httpd:
+            print(f"✅ Health check server started on port {port}")
+            httpd.serve_forever()
+    except Exception as e:
+        print(f"❌ Server Error: {e}")
 
 threading.Thread(target=run_health_check_server, daemon=True).start()
 
@@ -86,7 +89,7 @@ try:
         balance_sheet = spreadsheet.add_worksheet(title="balance_history", rows="1000", cols="4")
         balance_sheet.append_row(["Timestamp", "Daily Start", "Weekly Start", "Monthly Start"])
 
-    print("✅ Connected Google Sheets (Silent Background Mode)")
+    print("✅ Connected Google Sheets")
 except Exception as e:
     print("❌ Google Sheet Error:", e)
 
@@ -115,39 +118,36 @@ def log_new_balance(daily=None, weekly=None, monthly=None):
         print(f"❌ Log Balance Error: {e}")
 
 # -------------------------
-# Auto-Recording Logic (NEW)
+# Auto-Recording Logic
 # -------------------------
 
 def parse_and_record_trade(text, msg_id):
-    """วิเคราะห์ข้อความที่มี Emoji และบรรทัดใหม่ เพื่อบันทึกลง Sheet"""
+    """วิเคราะห์ข้อความที่มี Emoji และบรรทัดใหม่ เพื่อบันทึกลง Sheet trades"""
     try:
         if "ปิดออเดอร์" not in text or "กำไร:" not in text:
             return False
 
-        print(f"🔍 วิเคราะห์ข้อความ ID:{msg_id}")
-
-        # 1. Symbol/Side: ข้าม Emoji สีแดง/ฟ้า แล้วดึงชื่อคู่เงินกับ BUY/SELL
-        # ใช้ [\w.]+ เพื่อรองรับ XAUUSD.VX และข้ามอักขระพิเศษรอบๆ
-        symbol_side_match = re.search(r"([\w.]+)\s*(?:🔴|🔵|🟢|⚪)?\s*(BUY|SELL)", text, re.IGNORECASE)
+        # 1. Symbol/Side: รองรับ Emoji และอักขระพิเศษ
+        symbol_side_match = re.search(r"([\w.]+)\s*(?:🔴|🔵|🟢|⚪|🔵)?\s*(BUY|SELL)", text, re.IGNORECASE)
         
-        # 2. Lot: เหมือนเดิม
+        # 2. Lot
         lot_match = re.search(r"([\d.]+)\s*lot", text, re.IGNORECASE)
         
-        # 3. ราคาเปิด: ใช้ความยืดหยุ่นสูงขึ้นเพื่อข้าม Emoji กราฟ
+        # 3. ราคาเปิด: รองรับ Emoji กราฟ 📈
         open_match = re.search(r"ราคาเปิด:\s*([\d,.]+)", text)
         
-        # 4. ราคาปิด: เหมือนกัน
+        # 4. ราคาปิด: รองรับ Emoji กราฟ 📉
         close_match = re.search(r"ราคาปิด:\s*([\d,.]+)", text)
         
-        # 5. กำไร: รองรับทั้งที่มี Emoji ✅ และเครื่องหมาย + -
+        # 5. กำไร: รองรับ Emoji ✅ และเครื่องหมาย + -
         profit_match = re.search(r"กำไร:\s*([+-]?[\d,.]+)", text)
 
         if all([symbol_side_match, lot_match, open_match, close_match, profit_match]):
             row_data = [
                 datetime.now(TH_TZ).isoformat(),
-                symbol_side_match.group(1).strip(),           # XAUUSD.VX
-                symbol_side_match.group(2).strip().upper(),   # SELL
-                float(lot_match.group(1)),                    # 0.0098
+                symbol_side_match.group(1).strip(),
+                symbol_side_match.group(2).strip().upper(),
+                float(lot_match.group(1)),
                 float(open_match.group(1).replace(',', '')),
                 float(close_match.group(1).replace(',', '')),
                 float(profit_match.group(1).replace(',', '')),
@@ -155,17 +155,9 @@ def parse_and_record_trade(text, msg_id):
             ]
             
             trade_sheet.append_row(row_data, value_input_option="USER_ENTERED")
-            print(f"✅ บันทึกสำเร็จ! {symbol_side_match.group(1)} {profit_match.group(1)} USD")
+            print(f"✅ บันทึกสำเร็จ! {symbol_side_match.group(1)} กำไร: {profit_match.group(1)} USD")
             return True
         else:
-            # Debug ส่วนที่พลาด
-            missing = []
-            if not symbol_side_match: missing.append("Symbol/Side")
-            if not lot_match: missing.append("Lot")
-            if not open_match: missing.append("Open Price")
-            if not close_match: missing.append("Close Price")
-            if not profit_match: missing.append("Profit")
-            print(f"⚠️ Regex พลาดที่ส่วน: {', '.join(missing)}")
             return False
             
     except Exception as e:
@@ -277,12 +269,12 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        if not update.message or not update.message.text: return
         text = update.message.text
-        if not text: return
         chat_id = update.effective_chat.id
         save_chat_id(chat_id)
 
-        # ตรวจจับและบันทึกข้อมูลออเดอร์อัตโนมัติ
+        # ตรวจจับและบันทึกข้อมูลออเดอร์อัตโนมัติ (รับจากทุก Source รวมถึง Bot อื่น)
         if "ปิดออเดอร์" in text:
             parse_and_record_trade(text, update.message.message_id)
             return
@@ -377,13 +369,17 @@ main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
 sheet_inline_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]])
 
 def main():
+    # สร้าง Application และเปิดใช้งาน JobQueue
     app = ApplicationBuilder().token(TOKEN).build()
     
+    # คำสั่งพื้นฐาน
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("menu", start_command))
     app.add_handler(CommandHandler("calc", calc_command))
     app.add_handler(CommandHandler("tobath", tobath_command))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # MessageHandler: ปรับ Filter ให้รับข้อความทั่วไปจากทุกแหล่ง (รวมถึงบอทอื่น)
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     job_queue = app.job_queue
     job_queue.run_daily(morning_date_job, time=time(0, 1, tzinfo=TH_TZ))
