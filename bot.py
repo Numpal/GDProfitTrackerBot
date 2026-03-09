@@ -3,6 +3,7 @@ import socketserver
 import threading
 import os
 import asyncio
+import re  # เพิ่ม re สำหรับดึงข้อมูลจากข้อความ
 from datetime import datetime, timedelta, time
 from zoneinfo import ZoneInfo
 
@@ -90,11 +91,10 @@ except Exception as e:
     print("❌ Google Sheet Error:", e)
 
 # -------------------------
-# Balance Logic (Dynamic Row Support)
+# Balance Logic
 # -------------------------
 
 def get_latest_balance(col_index):
-    """ดึงค่าล่าสุดจากคอลัมน์ (B=2, C=3, D=4) โดยไล่จากแถวล่างขึ้นบน"""
     try:
         col_values = balance_sheet.col_values(col_index)
         if len(col_values) <= 1: return INITIAL_BALANCE
@@ -107,13 +107,46 @@ def get_latest_balance(col_index):
         return INITIAL_BALANCE
 
 def log_new_balance(daily=None, weekly=None, monthly=None):
-    """บันทึกแถวใหม่ลงใน balance_history"""
     try:
         now_str = datetime.now(TH_TZ).strftime("%Y-%m-%d %H:%M")
         new_row = [now_str, daily, weekly, monthly]
         balance_sheet.append_row(new_row, value_input_option="USER_ENTERED")
     except Exception as e:
         print(f"❌ Log Balance Error: {e}")
+
+# -------------------------
+# Auto-Recording Logic (NEW)
+# -------------------------
+
+def parse_and_record_trade(text, msg_id):
+    """วิเคราะห์ข้อความแจ้งเตือนและบันทึกลง Sheet trades ตามรูปภาพ"""
+    try:
+        if "ปิดออเดอร์" not in text: return False
+
+        # ใช้ Regex ดึงข้อมูล
+        # รูปแบบ: XAUUSD.VX  SELL 0.0098 lot ราคาเปิด: 5,090.48 ราคาปิด: 5,089.43 กำไร: +1.02 USD
+        symbol = re.search(r"([A-Z0-9.]+)\s+(BUY|SELL)", text)
+        lot = re.search(r"(\d+\.\d+)\s+lot", text)
+        open_p = re.search(r"ราคาเปิด:\s+([\d,.]+)", text)
+        close_p = re.search(r"ราคาปิด:\s+([\d,.]+)", text)
+        profit = re.search(r"กำไร:\s+([+-]?[\d,.]+)", text)
+
+        if all([symbol, lot, open_p, close_p, profit]):
+            row_data = [
+                datetime.now(TH_TZ).isoformat(),              # A: date
+                symbol.group(1),                              # B: symbol
+                symbol.group(2),                              # C: type
+                float(lot.group(1)),                          # D: lot
+                float(open_p.group(1).replace(',', '')),      # E: open
+                float(close_p.group(1).replace(',', '')),     # F: close
+                float(profit.group(1).replace(',', '')),      # G: profit
+                str(msg_id)                                   # H: msg_id
+            ]
+            trade_sheet.append_row(row_data, value_input_option="USER_ENTERED")
+            return True
+    except Exception as e:
+        print(f"❌ Auto-Record Error: {e}")
+    return False
 
 # -------------------------
 # Utilities
@@ -221,8 +254,14 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         text = update.message.text
+        if not text: return
         chat_id = update.effective_chat.id
         save_chat_id(chat_id)
+
+        # ตรวจจับและบันทึกข้อมูลออเดอร์อัตโนมัติ
+        if "ปิดออเดอร์" in text:
+            parse_and_record_trade(text, update.message.message_id)
+            return
 
         if text == "📊 กำไรวันนี้":
             total, count = read_trades(1)
@@ -260,11 +299,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
 # -------------------------
-# Scheduled Jobs (Silent Calculations)
+# Scheduled Jobs
 # -------------------------
 
 async def daily_report_and_compound_job(context):
-    """สรุปกำไรรายวันและบันทึกยอดทบทุนเงียบๆ"""
     chat_id = get_chat_id()
     if chat_id:
         total, count = read_trades(1)
@@ -274,35 +312,27 @@ async def daily_report_and_compound_job(context):
         
         new_daily = latest_daily + total
         pct = (total / latest_daily * 100) if latest_daily > 0 else 0
-        
-        # บันทึกแถวใหม่แบบเงียบๆ
         log_new_balance(daily=new_daily, weekly=latest_weekly, monthly=latest_monthly)
         
-        # แจ้งแค่กำไร ไม่แจ้งยอดทุนใหม่
         await context.bot.send_message(
             chat_id=chat_id,
             text=f"📊 สรุปกำไรวันนี้\nไม้: {count}\nกำไร: {total:,.2f} USD ({pct:,.2f}%)"
         )
 
 async def weekly_reset_job(context):
-    """Reset ทุนรายสัปดาห์เงียบๆ (คืนวันอาทิตย์)"""
     now = datetime.now(TH_TZ)
     if now.weekday() == 6: 
         latest_monthly = get_latest_balance(4)
         log_new_balance(daily=INITIAL_BALANCE, weekly=INITIAL_BALANCE, monthly=latest_monthly)
-        # ไม่มีการส่งข้อความแจ้งเตือน Reset เพื่อความคลีน
 
 async def monthly_reset_job(context):
-    """Reset ทุนรายเดือนเงียบๆ (ทุกวันที่ 1)"""
     now = datetime.now(TH_TZ)
     if now.day == 1:
         latest_daily = get_latest_balance(2)
         latest_weekly = get_latest_balance(3)
         log_new_balance(daily=latest_daily, weekly=latest_weekly, monthly=INITIAL_BALANCE)
-        # ไม่มีการส่งข้อความแจ้งเตือน Reset
 
 async def morning_date_job(context):
-    """แจ้งแค่วันที่ในตอนเช้า"""
     chat_id = get_chat_id()
     if chat_id:
         await context.bot.send_message(
@@ -332,16 +362,12 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     job_queue = app.job_queue
-    # 00:01 แจ้งวันที่
     job_queue.run_daily(morning_date_job, time=time(0, 1, tzinfo=TH_TZ))
-    # 23:56 Reset เดือน (เงียบ)
     job_queue.run_daily(monthly_reset_job, time=time(23, 56, tzinfo=TH_TZ))
-    # 23:58 บันทึกทบยอด & แจ้งกำไร
     job_queue.run_daily(daily_report_and_compound_job, time=time(23, 58, tzinfo=TH_TZ))
-    # 23:59 Reset อาทิตย์ (เงียบ)
     job_queue.run_daily(weekly_reset_job, time=time(23, 59, tzinfo=TH_TZ))
 
-    print("🚀 Bot Started | Silent Calculation Mode Active")
+    print("🚀 Bot Started | Auto-Recording Mode Active")
     app.run_polling()
 
 if __name__ == "__main__":
