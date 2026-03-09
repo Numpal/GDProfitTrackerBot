@@ -121,35 +121,48 @@ def log_new_balance(daily=None, weekly=None, monthly=None):
 def parse_and_record_trade(text, msg_id):
     """วิเคราะห์ข้อความแจ้งเตือนและบันทึกลง Sheet trades"""
     try:
-        # เช็ก Keyword ว่ามีการ "ปิดออเดอร์" และมี "กำไร" หรือไม่
+        # เช็กเบื้องต้น
         if "ปิดออเดอร์" not in text or "กำไร:" not in text:
             return False
 
-        # ใช้ re.DOTALL เพื่อให้ค้นหาข้ามบรรทัดได้ และ \s+ เพื่อรองรับช่องว่างหลายจุด
+        print(f"🔍 กำลังวิเคราะห์ข้อความ ID:{msg_id}")
+
+        # ปรับ Regex ให้ยืดหยุ่น (เพิ่ม \s+ และรองรับการค้นหาแบบไม่จำกัดบรรทัด)
+        # 1. ดึง Symbol และ Side (รองรับช่องว่างกี่จุดก็ได้)
         symbol_match = re.search(r"([A-Z0-9.]+)\s+(BUY|SELL)", text, re.IGNORECASE)
+        # 2. ดึง Lot
         lot_match = re.search(r"([\d.]+)\s*lot", text, re.IGNORECASE)
+        # 3. ดึงราคาเปิด (รองรับคอมม่า)
         open_match = re.search(r"ราคาเปิด:\s*([\d,.]+)", text)
+        # 4. ดึงราคาปิด (รองรับคอมม่า)
         close_match = re.search(r"ราคาปิด:\s*([\d,.]+)", text)
-        # รองรับทั้ง กำไร: +1.02 หรือ กำไร: -1.02
+        # 5. ดึงกำไร (รองรับเครื่องหมาย + หรือ - และคอมม่า)
         profit_match = re.search(r"กำไร:\s*([+-]?[\d,.]+)", text)
 
         if all([symbol_match, lot_match, open_match, close_match, profit_match]):
             row_data = [
-                datetime.now(TH_TZ).isoformat(),             # A: วันที่
-                symbol_match.group(1).strip(),               # B: คู่เงิน (XAUUSD.VX)
-                symbol_match.group(2).strip().upper(),       # C: ประเภท (SELL)
-                float(lot_match.group(1)),                   # D: Lot (0.0098)
-                float(open_match.group(1).replace(',', '')), # E: ราคาเปิด
-                float(close_match.group(1).replace(',', '')),# F: ราคาปิด
-                float(profit_match.group(1).replace(',', '')),# G: กำไร (1.02)
-                f"ID:{msg_id}"                               # H: อ้างอิงข้อความ
+                datetime.now(TH_TZ).isoformat(),
+                symbol_match.group(1).strip(),
+                symbol_match.group(2).strip().upper(),
+                float(lot_match.group(1)),
+                float(open_match.group(1).replace(',', '')),
+                float(close_match.group(1).replace(',', '')),
+                float(profit_match.group(1).replace(',', '')),
+                f"ID:{msg_id}"
             ]
             
             trade_sheet.append_row(row_data, value_input_option="USER_ENTERED")
-            print(f"✅ บันทึกสำเร็จ! กำไร: {profit_match.group(1)} USD")
+            print(f"✅ บันทึกสำเร็จ! {symbol_match.group(1)} กำไร: {profit_match.group(1)} USD")
             return True
         else:
-            print("⚠️ ตรวจพบข้อความปิดออเดอร์ แต่ดึงข้อมูล (Regex) ไม่ครบ")
+            # Debug หาจุดที่ Regex พลาด
+            missing = []
+            if not symbol_match: missing.append("Symbol/Side")
+            if not lot_match: missing.append("Lot")
+            if not open_match: missing.append("Open Price")
+            if not close_match: missing.append("Close Price")
+            if not profit_match: missing.append("Profit")
+            print(f"⚠️ Regex พลาดที่ส่วน: {', '.join(missing)}")
             return False
             
     except Exception as e:
