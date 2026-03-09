@@ -119,33 +119,41 @@ def log_new_balance(daily=None, weekly=None, monthly=None):
 # -------------------------
 
 def parse_and_record_trade(text, msg_id):
-    """วิเคราะห์ข้อความแจ้งเตือนและบันทึกลง Sheet trades ตามรูปภาพ"""
+    """วิเคราะห์ข้อความแจ้งเตือนและบันทึกลง Sheet trades"""
     try:
-        if "ปิดออเดอร์" not in text: return False
+        # เช็ก Keyword ว่ามีการ "ปิดออเดอร์" และมี "กำไร" หรือไม่
+        if "ปิดออเดอร์" not in text or "กำไร:" not in text:
+            return False
 
-        # ใช้ Regex ดึงข้อมูล
-        # รูปแบบ: XAUUSD.VX  SELL 0.0098 lot ราคาเปิด: 5,090.48 ราคาปิด: 5,089.43 กำไร: +1.02 USD
-        symbol = re.search(r"([A-Z0-9.]+)\s+(BUY|SELL)", text)
-        lot = re.search(r"(\d+\.\d+)\s+lot", text)
-        open_p = re.search(r"ราคาเปิด:\s+([\d,.]+)", text)
-        close_p = re.search(r"ราคาปิด:\s+([\d,.]+)", text)
-        profit = re.search(r"กำไร:\s+([+-]?[\d,.]+)", text)
+        # ใช้ re.DOTALL เพื่อให้ค้นหาข้ามบรรทัดได้ และ \s+ เพื่อรองรับช่องว่างหลายจุด
+        symbol_match = re.search(r"([A-Z0-9.]+)\s+(BUY|SELL)", text, re.IGNORECASE)
+        lot_match = re.search(r"([\d.]+)\s*lot", text, re.IGNORECASE)
+        open_match = re.search(r"ราคาเปิด:\s*([\d,.]+)", text)
+        close_match = re.search(r"ราคาปิด:\s*([\d,.]+)", text)
+        # รองรับทั้ง กำไร: +1.02 หรือ กำไร: -1.02
+        profit_match = re.search(r"กำไร:\s*([+-]?[\d,.]+)", text)
 
-        if all([symbol, lot, open_p, close_p, profit]):
+        if all([symbol_match, lot_match, open_match, close_match, profit_match]):
             row_data = [
-                datetime.now(TH_TZ).isoformat(),              # A: date
-                symbol.group(1),                              # B: symbol
-                symbol.group(2),                              # C: type
-                float(lot.group(1)),                          # D: lot
-                float(open_p.group(1).replace(',', '')),      # E: open
-                float(close_p.group(1).replace(',', '')),     # F: close
-                float(profit.group(1).replace(',', '')),      # G: profit
-                str(msg_id)                                   # H: msg_id
+                datetime.now(TH_TZ).isoformat(),             # A: วันที่
+                symbol_match.group(1).strip(),               # B: คู่เงิน (XAUUSD.VX)
+                symbol_match.group(2).strip().upper(),       # C: ประเภท (SELL)
+                float(lot_match.group(1)),                   # D: Lot (0.0098)
+                float(open_match.group(1).replace(',', '')), # E: ราคาเปิด
+                float(close_match.group(1).replace(',', '')),# F: ราคาปิด
+                float(profit_match.group(1).replace(',', '')),# G: กำไร (1.02)
+                f"ID:{msg_id}"                               # H: อ้างอิงข้อความ
             ]
+            
             trade_sheet.append_row(row_data, value_input_option="USER_ENTERED")
+            print(f"✅ บันทึกสำเร็จ! กำไร: {profit_match.group(1)} USD")
             return True
+        else:
+            print("⚠️ ตรวจพบข้อความปิดออเดอร์ แต่ดึงข้อมูล (Regex) ไม่ครบ")
+            return False
+            
     except Exception as e:
-        print(f"❌ Auto-Record Error: {e}")
+        print(f"❌ Error ในการบันทึก: {e}")
     return False
 
 # -------------------------
