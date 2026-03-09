@@ -118,21 +118,39 @@ def log_new_balance(daily=None, weekly=None, monthly=None):
         print(f"❌ Log Balance Error: {e}")
 
 # -------------------------
-# Auto-Recording Logic
+# Auto-Recording Logic (แก้ไขใหม่ให้รองรับการขาดทุน)
 # -------------------------
 
 def parse_and_record_trade(text, msg_id):
     try:
-        if "ปิดออเดอร์" not in text or "กำไร:" not in text:
+        # 1. ตรวจสอบ Keyword หลัก (ปิดออเดอร์ และ (กำไร หรือ ขาดทุน))
+        if "ปิดออเดอร์" not in text:
+            return False
+        
+        # ตรวจสอบว่ามีคำว่า กำไร หรือ ขาดทุน อย่างใดอย่างหนึ่ง
+        if not (re.search(r"กำไร:", text) or re.search(r"ขาดทุน:", text)):
             return False
 
+        # 2. ปรับปรุง Regex สำหรับดึงข้อมูล
+        # รองรับ Symbol ที่มีจุด (เช่น XAUUSD.VX) และดักจับ Side (BUY/SELL)
         symbol_side_match = re.search(r"([\w.]+)\s*(?:🔴|🔵|🟢|⚪|🔵)?\s*(BUY|SELL)", text, re.IGNORECASE)
         lot_match = re.search(r"([\d.]+)\s*lot", text, re.IGNORECASE)
         open_match = re.search(r"ราคาเปิด:\s*([\d,.]+)", text)
         close_match = re.search(r"ราคาปิด:\s*([\d,.]+)", text)
-        profit_match = re.search(r"กำไร:\s*([+-]?[\d,.]+)", text)
+        
+        # ปรับ Regex Profit: ให้ดึงตัวเลขหลังคำว่า กำไร: หรือ ขาดทุน: 
+        # โดยรองรับเครื่องหมายลบ และตัวเลขที่มีคอมม่า
+        profit_match = re.search(r"(?:กำไร|ขาดทุน):\s*([+-]?[\d,.]+)", text)
 
         if all([symbol_side_match, lot_match, open_match, close_match, profit_match]):
+            # ทำความสะอาดข้อมูลตัวเลข
+            raw_profit = profit_match.group(1).replace(',', '')
+            profit_value = float(raw_profit)
+            
+            # ตรวจสอบ Logic เพิ่มเติม: ถ้าเป็นคำว่า "ขาดทุน" แต่ตัวเลขไม่มีเครื่องหมายติดลบ ให้เติมลบเอง
+            if "ขาดทุน" in text and profit_value > 0:
+                profit_value = -profit_value
+
             row_data = [
                 datetime.now(TH_TZ).isoformat(),
                 symbol_side_match.group(1).strip(),
@@ -140,15 +158,15 @@ def parse_and_record_trade(text, msg_id):
                 float(lot_match.group(1)),
                 float(open_match.group(1).replace(',', '')),
                 float(close_match.group(1).replace(',', '')),
-                float(profit_match.group(1).replace(',', '')),
+                profit_value,  # บันทึกลง Sheet เป็นตัวเลขติดลบถ้าขาดทุน
                 f"ID:{msg_id}"
             ]
             
             trade_sheet.append_row(row_data, value_input_option="USER_ENTERED")
-            print(f"✅ Record success: {symbol_side_match.group(1)} Profit: {profit_match.group(1)}")
+            print(f"✅ Record success: {symbol_side_match.group(1)} Net: {profit_value}")
             return True
         else:
-            print(f"⚠️ Regex not matched: {text[:50]}...")
+            print(f"⚠️ Regex not matched details: S:{bool(symbol_side_match)} L:{bool(lot_match)} O:{bool(open_match)} C:{bool(close_match)} P:{bool(profit_match)}")
             return False
             
     except Exception as e:
