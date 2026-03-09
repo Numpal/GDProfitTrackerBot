@@ -122,24 +122,14 @@ def log_new_balance(daily=None, weekly=None, monthly=None):
 # -------------------------
 
 def parse_and_record_trade(text, msg_id):
-    """วิเคราะห์ข้อความที่มี Emoji และบรรทัดใหม่ เพื่อบันทึกลง Sheet trades"""
     try:
         if "ปิดออเดอร์" not in text or "กำไร:" not in text:
             return False
 
-        # 1. Symbol/Side: ดึงข้อมูลคู่เงินและหน้าเทรด
         symbol_side_match = re.search(r"([\w.]+)\s*(?:🔴|🔵|🟢|⚪|🔵)?\s*(BUY|SELL)", text, re.IGNORECASE)
-        
-        # 2. Lot
         lot_match = re.search(r"([\d.]+)\s*lot", text, re.IGNORECASE)
-        
-        # 3. ราคาเปิด
         open_match = re.search(r"ราคาเปิด:\s*([\d,.]+)", text)
-        
-        # 4. ราคาปิด
         close_match = re.search(r"ราคาปิด:\s*([\d,.]+)", text)
-        
-        # 5. กำไร: รองรับเครื่องหมายบวกลบและคอมม่า
         profit_match = re.search(r"กำไร:\s*([+-]?[\d,.]+)", text)
 
         if all([symbol_side_match, lot_match, open_match, close_match, profit_match]):
@@ -155,14 +145,14 @@ def parse_and_record_trade(text, msg_id):
             ]
             
             trade_sheet.append_row(row_data, value_input_option="USER_ENTERED")
-            print(f"✅ บันทึกสำเร็จ! {symbol_side_match.group(1)} กำไร: {profit_match.group(1)} USD")
+            print(f"✅ Record success: {symbol_side_match.group(1)} Profit: {profit_match.group(1)}")
             return True
         else:
-            print("⚠️ ข้อมูลไม่ครบถ้วนตามเงื่อนไข Regex")
+            print(f"⚠️ Regex not matched: {text[:50]}...")
             return False
             
     except Exception as e:
-        print(f"❌ Error ในการบันทึก: {e}")
+        print(f"❌ Parse Error: {e}")
     return False
 
 # -------------------------
@@ -246,9 +236,7 @@ async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         thb_user = profit_user * EXCHANGE_RATE
 
         msg = await update.message.reply_text(
-            f"🧮 คำนวณตามทุน {capital:,.2f} USD\n"
-            f"กำไรวันนี้ ({pct:,.2f}%): {profit_user:,.2f} USD\n"
-            f"≈ {thb_user:,.2f} บาท"
+            f"🧮 ทุน {capital:,.2f} USD\nกำไรวันนี้ ({pct:,.2f}%): {profit_user:,.2f} USD ≈ {thb_user:,.2f} บาท"
         )
         asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, DELETE_FAST))
         await update.message.delete()
@@ -270,21 +258,22 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # รับข้อความจากทั้งคน บอท และการ Forward
-        msg = update.message or update.channel_post or update.edited_message
+        # ดึงข้อความจากทุกรูปแบบ (Message ปกติ, Post ใน Channel, ข้อความที่ถูกแก้ไข)
+        msg = update.effective_message
         if not msg or not msg.text: return
         
         text = msg.text
         chat_id = update.effective_chat.id
         save_chat_id(chat_id)
 
-        # 🟢 ส่วนสำคัญ: ตรวจจับคำว่า "ปิดออเดอร์" เพื่อบันทึกข้อมูล
+        # ตรวจจับคำว่า "ปิดออเดอร์" เพื่อบันทึก
         if "ปิดออเดอร์" in text:
+            # ลอง Print ดูใน log ว่าบอทเห็นข้อความไหม
+            print(f"🔍 Found order message: {text[:50]}")
             parse_and_record_trade(text, msg.message_id)
-            # ถ้าเป็นข้อความสรุปที่เราส่งเอง หรือบอทส่ง ไม่ต้องลบทิ้ง แต่ถ้าเราพิมพ์สั่งเองค่อยลบ (เลือกตามความเหมาะสม)
             return
 
-        # เมนูการทำงานของบอท
+        # ระบบเมนู
         if text == "📊 กำไรวันนี้":
             total, count = read_trades(1)
             master_bal = get_latest_balance(2)
@@ -300,12 +289,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             report = f"📈 30 วัน\nไม้: {count}\nกำไรสะสม: {total:,.2f} USD"
         elif text == "🧮 คำนวณตามทุน":
             await msg.delete()
-            sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้คำสั่ง /calc จำนวนทุน\nตัวอย่าง /calc 500")
+            sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้ /calc จำนวนทุน (เช่น /calc 500)")
             asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_LONG))
             return
         elif text == "💵 แปลงค่าเงิน":
             await msg.delete()
-            sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้คำสั่ง /tobath (ยอดเงิน USD)")
+            sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้ /tobath ยอด USD (เช่น /tobath 100)")
             asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
             return
         elif text == "🔗 ประวัติย้อนหลังทั้งหมด":
@@ -320,7 +309,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
         await msg.delete()
     except Exception as e:
-        print(f"❌ Handle Message Error: {e}")
+        print(f"❌ Handle Error: {e}")
 
 # -------------------------
 # Scheduled Jobs
@@ -333,25 +322,18 @@ async def daily_report_and_compound_job(context):
         latest_daily = get_latest_balance(2)
         latest_weekly = get_latest_balance(3)
         latest_monthly = get_latest_balance(4)
-        
         new_daily = latest_daily + total
         pct = (total / latest_daily * 100) if latest_daily > 0 else 0
         log_new_balance(daily=new_daily, weekly=latest_weekly, monthly=latest_monthly)
-        
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"📊 สรุปกำไรวันนี้\nไม้: {count}\nกำไร: {total:,.2f} USD ({pct:,.2f}%)"
-        )
+        await context.bot.send_message(chat_id=chat_id, text=f"📊 สรุปกำไรวันนี้\nไม้: {count}\nกำไร: {total:,.2f} USD ({pct:,.2f}%)")
 
 async def weekly_reset_job(context):
-    now = datetime.now(TH_TZ)
-    if now.weekday() == 6: 
+    if datetime.now(TH_TZ).weekday() == 6: 
         latest_monthly = get_latest_balance(4)
         log_new_balance(daily=INITIAL_BALANCE, weekly=INITIAL_BALANCE, monthly=latest_monthly)
 
 async def monthly_reset_job(context):
-    now = datetime.now(TH_TZ)
-    if now.day == 1:
+    if datetime.now(TH_TZ).day == 1:
         latest_daily = get_latest_balance(2)
         latest_weekly = get_latest_balance(3)
         log_new_balance(daily=latest_daily, weekly=latest_weekly, monthly=INITIAL_BALANCE)
@@ -359,10 +341,7 @@ async def monthly_reset_job(context):
 async def morning_date_job(context):
     chat_id = get_chat_id()
     if chat_id:
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=f"📅 {thai_date_full()}"
-        )
+        await context.bot.send_message(chat_id=chat_id, text=f"📅 {thai_date_full()}")
 
 # -------------------------
 # Main Application
@@ -377,7 +356,7 @@ main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
 sheet_inline_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]])
 
 def main():
-    # ปรับ Filter ในการสร้าง Application ให้รองรับข้อมูลที่กว้างขึ้น
+    # แก้ไขจุดสำคัญ: เพิ่ม allowed_updates เพื่อให้รับทุกสถานะ
     app = ApplicationBuilder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start_command))
@@ -385,7 +364,7 @@ def main():
     app.add_handler(CommandHandler("calc", calc_command))
     app.add_handler(CommandHandler("tobath", tobath_command))
     
-    # แก้ไขจุดสำคัญ: ใช้ filters.ALL เพื่อให้ MessageHandler รับข้อมูลจากทุกแหล่งรวมถึงบอทอื่น
+    # ใช้ Filter ที่ครอบคลุมที่สุด (รับ Text จากทุกที่ รวมถึงบอท และการแก้ไข)
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     job_queue = app.job_queue
@@ -394,8 +373,8 @@ def main():
     job_queue.run_daily(daily_report_and_compound_job, time=time(23, 58, tzinfo=TH_TZ))
     job_queue.run_daily(weekly_reset_job, time=time(23, 59, tzinfo=TH_TZ))
 
-    print("🚀 Bot Started | Monitoring All Messages...")
-    app.run_polling()
+    print("🚀 Monitoring active. Check BotFather Privacy settings if no response.")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
