@@ -118,36 +118,27 @@ def log_new_balance(daily=None, weekly=None, monthly=None):
         print(f"❌ Log Balance Error: {e}")
 
 # -------------------------
-# Auto-Recording Logic (แก้ไขใหม่ให้รองรับการขาดทุน)
+# Auto-Recording Logic
 # -------------------------
 
 def parse_and_record_trade(text, msg_id):
     try:
-        # 1. ตรวจสอบ Keyword หลัก (ปิดออเดอร์ และ (กำไร หรือ ขาดทุน))
         if "ปิดออเดอร์" not in text:
             return False
         
-        # ตรวจสอบว่ามีคำว่า กำไร หรือ ขาดทุน อย่างใดอย่างหนึ่ง
         if not (re.search(r"กำไร:", text) or re.search(r"ขาดทุน:", text)):
             return False
 
-        # 2. ปรับปรุง Regex สำหรับดึงข้อมูล
-        # รองรับ Symbol ที่มีจุด (เช่น XAUUSD.VX) และดักจับ Side (BUY/SELL)
         symbol_side_match = re.search(r"([\w.]+)\s*(?:🔴|🔵|🟢|⚪|🔵)?\s*(BUY|SELL)", text, re.IGNORECASE)
         lot_match = re.search(r"([\d.]+)\s*lot", text, re.IGNORECASE)
         open_match = re.search(r"ราคาเปิด:\s*([\d,.]+)", text)
         close_match = re.search(r"ราคาปิด:\s*([\d,.]+)", text)
-        
-        # ปรับ Regex Profit: ให้ดึงตัวเลขหลังคำว่า กำไร: หรือ ขาดทุน: 
-        # โดยรองรับเครื่องหมายลบ และตัวเลขที่มีคอมม่า
         profit_match = re.search(r"(?:กำไร|ขาดทุน):\s*([+-]?[\d,.]+)", text)
 
         if all([symbol_side_match, lot_match, open_match, close_match, profit_match]):
-            # ทำความสะอาดข้อมูลตัวเลข
             raw_profit = profit_match.group(1).replace(',', '')
             profit_value = float(raw_profit)
             
-            # ตรวจสอบ Logic เพิ่มเติม: ถ้าเป็นคำว่า "ขาดทุน" แต่ตัวเลขไม่มีเครื่องหมายติดลบ ให้เติมลบเอง
             if "ขาดทุน" in text and profit_value > 0:
                 profit_value = -profit_value
 
@@ -158,7 +149,7 @@ def parse_and_record_trade(text, msg_id):
                 float(lot_match.group(1)),
                 float(open_match.group(1).replace(',', '')),
                 float(close_match.group(1).replace(',', '')),
-                profit_value,  # บันทึกลง Sheet เป็นตัวเลขติดลบถ้าขาดทุน
+                profit_value,
                 f"ID:{msg_id}"
             ]
             
@@ -271,27 +262,29 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: pass
 
 # -------------------------
-# Message Handler
+# Message Handler (ปรับปรุงรองรับ Channel)
 # -------------------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # ดึงข้อความจากทุกรูปแบบ (Message ปกติ, Post ใน Channel, ข้อความที่ถูกแก้ไข)
+        # ใช้ effective_message เพื่อให้รองรับทั้ง Group และ Channel Post
         msg = update.effective_message
         if not msg or not msg.text: return
         
         text = msg.text
         chat_id = update.effective_chat.id
-        save_chat_id(chat_id)
+        
+        # บันทึก ID เฉพาะแชทส่วนตัวหรือกลุ่ม เพื่อใช้ส่งรายงานประจำวัน
+        if update.effective_chat.type in ['private', 'group', 'supergroup']:
+            save_chat_id(chat_id)
 
-        # ตรวจจับคำว่า "ปิดออเดอร์" เพื่อบันทึก
+        # 1. ตรวจจับสัญญาณเทรด (รองรับจากบอทตัวอื่นใน Channel)
         if "ปิดออเดอร์" in text:
-            # ลอง Print ดูใน log ว่าบอทเห็นข้อความไหม
             print(f"🔍 Found order message: {text[:50]}")
             parse_and_record_trade(text, msg.message_id)
             return
 
-        # ระบบเมนู
+        # 2. ระบบเมนู (จะทำงานเมื่อคนกดปุ่ม หรือพิมพ์เมนู)
         if text == "📊 กำไรวันนี้":
             total, count = read_trades(1)
             master_bal = get_latest_balance(2)
@@ -306,26 +299,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total, count = read_trades(30)
             report = f"📈 30 วัน\nไม้: {count}\nกำไรสะสม: {total:,.2f} USD"
         elif text == "🧮 คำนวณตามทุน":
-            await msg.delete()
+            try: await msg.delete()
+            except: pass
             sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้ /calc จำนวนทุน (เช่น /calc 500)")
             asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_LONG))
             return
         elif text == "💵 แปลงค่าเงิน":
-            await msg.delete()
+            try: await msg.delete()
+            except: pass
             sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้ /tobath ยอด USD (เช่น /tobath 100)")
             asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
             return
         elif text == "🔗 ประวัติย้อนหลังทั้งหมด":
-            await msg.delete()
+            try: await msg.delete()
+            except: pass
             sent_msg = await context.bot.send_message(chat_id=chat_id, text="📂 เปิดประวัติย้อนหลัง", reply_markup=sheet_inline_keyboard)
             asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
             return
         else:
             return
 
+        # ส่งรายงานผลกำไร
         sent_msg = await context.bot.send_message(chat_id=chat_id, text=report)
         asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
-        await msg.delete()
+        try: await msg.delete()
+        except: pass
+
     except Exception as e:
         print(f"❌ Handle Error: {e}")
 
@@ -374,7 +373,10 @@ main_markup = ReplyKeyboardMarkup(main_keyboard, resize_keyboard=True)
 sheet_inline_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(text="📂 เปิด Google Sheet", url=SHEET_URL)]])
 
 def main():
-    # แก้ไขจุดสำคัญ: เพิ่ม allowed_updates เพื่อให้รับทุกสถานะ
+    if not TOKEN:
+        print("❌ TOKEN is missing!")
+        return
+
     app = ApplicationBuilder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start_command))
@@ -382,8 +384,10 @@ def main():
     app.add_handler(CommandHandler("calc", calc_command))
     app.add_handler(CommandHandler("tobath", tobath_command))
     
-    # ใช้ Filter ที่ครอบคลุมที่สุด (รับ Text จากทุกที่ รวมถึงบอท และการแก้ไข)
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    # แก้ไข Filter ให้รับทั้งข้อความทั่วไป และข้อความจากแชนแนล (บอทตัวอื่น)
+    # filters.ChatType.CHANNEL จะทำให้บอทเห็นข้อความที่โพสต์ใน Channel ที่มันเป็น Admin
+    combined_filter = (filters.TEXT | filters.ChatType.CHANNEL) & (~filters.COMMAND)
+    app.add_handler(MessageHandler(combined_filter, handle_message))
 
     job_queue = app.job_queue
     job_queue.run_daily(morning_date_job, time=time(0, 1, tzinfo=TH_TZ))
@@ -391,7 +395,8 @@ def main():
     job_queue.run_daily(daily_report_and_compound_job, time=time(23, 58, tzinfo=TH_TZ))
     job_queue.run_daily(weekly_reset_job, time=time(23, 59, tzinfo=TH_TZ))
 
-    print("🚀 Monitoring active. Check BotFather Privacy settings if no response.")
+    print("🚀 Monitoring active in Channels & Groups...")
+    # Update.ALL_TYPES เพื่อให้มั่นใจว่าได้รับ update จาก Channel Post ด้วย
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
