@@ -119,27 +119,27 @@ def log_new_balance(daily=None, weekly=None, monthly=None):
 # -------------------------
 
 def parse_and_record_trade(text, msg_id):
-    """วิเคราะห์ข้อความแจ้งเตือนและบันทึกลง Sheet trades"""
+    """วิเคราะห์ข้อความที่มี Emoji และบรรทัดใหม่ เพื่อบันทึกลง Sheet"""
     try:
         if "ปิดออเดอร์" not in text or "กำไร:" not in text:
             return False
 
-        print(f"🔍 กำลังวิเคราะห์ข้อความ ID:{msg_id}")
+        print(f"🔍 วิเคราะห์ข้อความ ID:{msg_id}")
 
-        # 1. ปรับปรุง Symbol/Side: รองรับอักขระพิเศษ เช่น จุด(.) และช่องว่างหลายจุด
-        # ค้นหาคำว่า BUY หรือ SELL ก่อน แล้วถอยกลับไปเอาคำข้างหน้ามัน
-        symbol_side_match = re.search(r"([\w.]+)\s+(BUY|SELL)", text, re.IGNORECASE)
+        # 1. Symbol/Side: ข้าม Emoji สีแดง/ฟ้า แล้วดึงชื่อคู่เงินกับ BUY/SELL
+        # ใช้ [\w.]+ เพื่อรองรับ XAUUSD.VX และข้ามอักขระพิเศษรอบๆ
+        symbol_side_match = re.search(r"([\w.]+)\s*(?:🔴|🔵|🟢|⚪)?\s*(BUY|SELL)", text, re.IGNORECASE)
         
-        # 2. ดึง Lot
+        # 2. Lot: เหมือนเดิม
         lot_match = re.search(r"([\d.]+)\s*lot", text, re.IGNORECASE)
         
-        # 3. ดึงราคาเปิด
+        # 3. ราคาเปิด: ใช้ความยืดหยุ่นสูงขึ้นเพื่อข้าม Emoji กราฟ
         open_match = re.search(r"ราคาเปิด:\s*([\d,.]+)", text)
         
-        # 4. ดึงราคาปิด
+        # 4. ราคาปิด: เหมือนกัน
         close_match = re.search(r"ราคาปิด:\s*([\d,.]+)", text)
         
-        # 5. ดึงกำไร (สำคัญมาก: ต้องดักจับเครื่องหมาย + หรือ - ด้วย)
+        # 5. กำไร: รองรับทั้งที่มี Emoji ✅ และเครื่องหมาย + -
         profit_match = re.search(r"กำไร:\s*([+-]?[\d,.]+)", text)
 
         if all([symbol_side_match, lot_match, open_match, close_match, profit_match]):
@@ -148,17 +148,17 @@ def parse_and_record_trade(text, msg_id):
                 symbol_side_match.group(1).strip(),           # XAUUSD.VX
                 symbol_side_match.group(2).strip().upper(),   # SELL
                 float(lot_match.group(1)),                    # 0.0098
-                float(open_match.group(1).replace(',', '')),  # 5093.35
-                float(close_match.group(1).replace(',', '')), # 5093.16
-                float(profit_match.group(1).replace(',', '')),# 0.27
+                float(open_match.group(1).replace(',', '')),
+                float(close_match.group(1).replace(',', '')),
+                float(profit_match.group(1).replace(',', '')),
                 f"ID:{msg_id}"
             ]
             
             trade_sheet.append_row(row_data, value_input_option="USER_ENTERED")
-            print(f"✅ บันทึกสำเร็จ! {symbol_side_match.group(1)} กำไร: {profit_match.group(1)} USD")
+            print(f"✅ บันทึกสำเร็จ! {symbol_side_match.group(1)} {profit_match.group(1)} USD")
             return True
         else:
-            # Debug ละเอียดว่าตัวไหนหาไม่เจอ
+            # Debug ส่วนที่พลาด
             missing = []
             if not symbol_side_match: missing.append("Symbol/Side")
             if not lot_match: missing.append("Lot")
