@@ -186,39 +186,54 @@ async def delete_message_safe(context, chat_id, message_id, delay=DELETE_NORMAL)
     except: pass
 
 # -------------------------
-# Trade Data Functions
+# Trade Data Functions (FIXED)
 # -------------------------
 
 def read_trades(days):
     try:
         rows = trade_sheet.get_all_values()
         total, count = 0.0, 0
-        now = datetime.now(TH_TZ)
+
+        now_date = datetime.now(TH_TZ).date()
+
         for row in rows[1:]:
             try:
-                date = datetime.fromisoformat(row[0])
-                if now - date <= timedelta(days=days):
+                trade_date = datetime.fromisoformat(row[0]).astimezone(TH_TZ).date()
+
+                if (now_date - trade_date).days < days:
                     total += float(row[6])
                     count += 1
-            except: continue
+            except:
+                continue
+
         return total, count
-    except: return 0.0, 0
+    except:
+        return 0.0, 0
 
 def read_week_trades():
     try:
         rows = trade_sheet.get_all_values()
         now = datetime.now(TH_TZ)
-        sunday = (now - timedelta(days=(now.weekday() + 1) % 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        sunday = (now - timedelta(days=(now.weekday() + 1) % 7)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
         total, count = 0.0, 0
+
         for row in rows[1:]:
             try:
-                date = datetime.fromisoformat(row[0])
+                date = datetime.fromisoformat(row[0]).astimezone(TH_TZ)
+
                 if date >= sunday:
                     total += float(row[6])
                     count += 1
-            except: continue
+            except:
+                continue
+
         return total, count
-    except: return 0.0, 0
+    except:
+        return 0.0, 0
 
 # -------------------------
 # Commands
@@ -249,7 +264,8 @@ async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, DELETE_FAST))
         await update.message.delete()
-    except: pass
+    except:
+        pass
 
 async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -259,71 +275,68 @@ async def tobath_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = await update.message.reply_text(f"💰 {usd:,.2f} USD ➜ {thb:,.2f} บาท")
         asyncio.create_task(delete_message_safe(context, chat_id, msg.message_id, DELETE_FAST))
         await update.message.delete()
-    except: pass
+    except:
+        pass
 
 # -------------------------
-# Message Handler (ปรับปรุงรองรับ Channel)
+# Message Handler
 # -------------------------
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # ใช้ effective_message เพื่อให้รองรับทั้ง Group และ Channel Post
         msg = update.effective_message
         if not msg or not msg.text: return
         
         text = msg.text
         chat_id = update.effective_chat.id
         
-        # บันทึก ID เฉพาะแชทส่วนตัวหรือกลุ่ม เพื่อใช้ส่งรายงานประจำวัน
         if update.effective_chat.type in ['private', 'group', 'supergroup']:
             save_chat_id(chat_id)
 
-        # 1. ตรวจจับสัญญาณเทรด (รองรับจากบอทตัวอื่นใน Channel)
         if "ปิดออเดอร์" in text:
-            print(f"🔍 Found order message: {text[:50]}")
             parse_and_record_trade(text, msg.message_id)
             return
 
-        # 2. ระบบเมนู (จะทำงานเมื่อคนกดปุ่ม หรือพิมพ์เมนู)
         if text == "📊 กำไรวันนี้":
             total, count = read_trades(1)
             master_bal = get_latest_balance(2)
             pct = (total / master_bal * 100) if master_bal > 0 else 0
             report = f"📊 วันนี้\nไม้: {count}\nกำไร: {total:,.2f} USD ({pct:,.2f}%)"
+
         elif text == "📅 กำไรสัปดาห์นี้":
             total, count = read_week_trades()
             week_start_bal = get_latest_balance(3)
             pct = (total / week_start_bal * 100) if week_start_bal > 0 else 0
             report = f"📅 สัปดาห์นี้\nไม้: {count}\nกำไรสะสม: {total:,.2f} USD ({pct:,.2f}%)"
+
         elif text == "📈 กำไร 30 วัน":
             total, count = read_trades(30)
             report = f"📈 30 วัน\nไม้: {count}\nกำไรสะสม: {total:,.2f} USD"
+
         elif text == "🧮 คำนวณตามทุน":
-            try: await msg.delete()
-            except: pass
+            await msg.delete()
             sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้ /calc จำนวนทุน (เช่น /calc 500)")
             asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_LONG))
             return
+
         elif text == "💵 แปลงค่าเงิน":
-            try: await msg.delete()
-            except: pass
+            await msg.delete()
             sent_msg = await context.bot.send_message(chat_id=chat_id, text="ใช้ /tobath ยอด USD (เช่น /tobath 100)")
             asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
             return
+
         elif text == "🔗 ประวัติย้อนหลังทั้งหมด":
-            try: await msg.delete()
-            except: pass
+            await msg.delete()
             sent_msg = await context.bot.send_message(chat_id=chat_id, text="📂 เปิดประวัติย้อนหลัง", reply_markup=sheet_inline_keyboard)
             asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
             return
+
         else:
             return
 
-        # ส่งรายงานผลกำไร
         sent_msg = await context.bot.send_message(chat_id=chat_id, text=report)
         asyncio.create_task(delete_message_safe(context, chat_id, sent_msg.message_id, DELETE_NORMAL))
-        try: await msg.delete()
-        except: pass
+        await msg.delete()
 
     except Exception as e:
         print(f"❌ Handle Error: {e}")
@@ -345,7 +358,7 @@ async def daily_report_and_compound_job(context):
         await context.bot.send_message(chat_id=chat_id, text=f"📊 สรุปกำไรวันนี้\nไม้: {count}\nกำไร: {total:,.2f} USD ({pct:,.2f}%)")
 
 async def weekly_reset_job(context):
-    if datetime.now(TH_TZ).weekday() == 6: 
+    if datetime.now(TH_TZ).weekday() == 6:
         latest_monthly = get_latest_balance(4)
         log_new_balance(daily=INITIAL_BALANCE, weekly=INITIAL_BALANCE, monthly=latest_monthly)
 
@@ -384,8 +397,6 @@ def main():
     app.add_handler(CommandHandler("calc", calc_command))
     app.add_handler(CommandHandler("tobath", tobath_command))
     
-    # แก้ไข Filter ให้รับทั้งข้อความทั่วไป และข้อความจากแชนแนล (บอทตัวอื่น)
-    # filters.ChatType.CHANNEL จะทำให้บอทเห็นข้อความที่โพสต์ใน Channel ที่มันเป็น Admin
     combined_filter = (filters.TEXT | filters.ChatType.CHANNEL) & (~filters.COMMAND)
     app.add_handler(MessageHandler(combined_filter, handle_message))
 
@@ -396,7 +407,6 @@ def main():
     job_queue.run_daily(weekly_reset_job, time=time(23, 59, tzinfo=TH_TZ))
 
     print("🚀 Monitoring active in Channels & Groups...")
-    # Update.ALL_TYPES เพื่อให้มั่นใจว่าได้รับ update จาก Channel Post ด้วย
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
